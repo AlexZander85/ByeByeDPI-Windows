@@ -69,6 +69,29 @@ impl ProcessingStats {
             errors: AtomicU64::new(0),
         }
     }
+
+    pub fn snapshot(&self) -> ProcessingStatsSnapshot {
+        ProcessingStatsSnapshot {
+            total_received: self.total_received.load(Ordering::Relaxed),
+            injected_skipped: self.injected_skipped.load(Ordering::Relaxed),
+            tls_outbound: self.tls_outbound.load(Ordering::Relaxed),
+            fake_ch_injected: self.fake_ch_injected.load(Ordering::Relaxed),
+            forwarded: self.forwarded.load(Ordering::Relaxed),
+            dropped: self.dropped.load(Ordering::Relaxed),
+            errors: self.errors.load(Ordering::Relaxed),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ProcessingStatsSnapshot {
+    pub total_received: u64,
+    pub injected_skipped: u64,
+    pub tls_outbound: u64,
+    pub fake_ch_injected: u64,
+    pub forwarded: u64,
+    pub dropped: u64,
+    pub errors: u64,
 }
 
 #[derive(Debug, Clone)]

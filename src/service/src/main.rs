@@ -19,7 +19,7 @@ use freedpi_core::{
     config::Config,
     conntrack::Conntrack,
     dns::fakeip::FakeIpManager,
-    engine::{ProcessingConfig, ProcessingPipeline},
+    engine::ProcessingPipeline,
     infra::sentinel::Sentinel,
     routing::geo::GeoRouter,
 };
