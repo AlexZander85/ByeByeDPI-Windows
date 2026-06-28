@@ -37,7 +37,7 @@ impl GeoBlockDetector {
     ///
     /// ## Пример
     /// ```rust
-    /// use byebyedpi_core::routing::detect::GeoBlockDetector;
+    /// use freedpi_core::routing::detect::GeoBlockDetector;
     ///
     /// let response = b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n";
     /// assert!(GeoBlockDetector::detect_geo_block(response));
@@ -105,7 +105,7 @@ impl GeoBlockDetector {
     ///
     /// ## Пример
     /// ```rust
-    /// use byebyedpi_core::routing::detect::GeoBlockDetector;
+    /// use freedpi_core::routing::detect::GeoBlockDetector;
     ///
     /// // Connection reset — типичный DPI
     /// assert!(GeoBlockDetector::detect_dpi_block("connection reset by peer"));

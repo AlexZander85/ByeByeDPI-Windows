@@ -16,7 +16,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 
     let _tray = TrayIconBuilder::with_id("main-tray")
         .icon(icon)
-        .tooltip("ByeByeDPI")
+        .tooltip("FreeDPI")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id().as_ref() {

@@ -1,4 +1,4 @@
-# ByeByeDPI Windows v3.0 — Beспощадный Security & Performance Review
+# FreeDPI Windows v3.0 — Beспощадный Security & Performance Review
 
 **Reviewer:** Principal Network Architect / Rust Performance Expert  
 **Scope:** `src/core/src/` — весь production Rust код  

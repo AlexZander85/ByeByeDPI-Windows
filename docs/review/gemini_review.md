@@ -1,4 +1,4 @@
-# CODE REVIEW: ByeByeDPI Windows v3.0 (Zero-Allocation & DPI Evasion Subsystem)
+# CODE REVIEW: FreeDPI Windows v3.0 (Zero-Allocation & DPI Evasion Subsystem)
 **Reviewer:** Principal Network Architect & Rust Performance Expert
 **Target Load:** 5-10 Gbps (C10M, Torrent + 4K Streaming)
 **Context:** Полный Rust, FFI удален, `WinDivertAddress.Impostor`, Concurrent `DesyncGroup`, `bytes` RC.

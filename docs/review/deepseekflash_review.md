@@ -1,4 +1,4 @@
-# DeepSeek Flash Review: ByeByeDPI Windows v3.0 — Hidden Killers at 10 Gbps
+# DeepSeek Flash Review: FreeDPI Windows v3.0 — Hidden Killers at 10 Gbps
 
 > **Target:** 5–10 Gbps (торренты + 4K стриминг, ~850k pps при 1500 MTU, ~14M pps при минимальных 64B ACK)
 > **Scope:** Только критические узкие места. Не линтеры, не стиль, не документированные баги.

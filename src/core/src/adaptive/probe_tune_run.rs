@@ -113,7 +113,7 @@ impl Default for PtrConfig {
 ///
 /// # Пример
 /// ```rust
-/// use byebyedpi_core::adaptive::probe_tune_run::ProbeTuneRun;
+/// use freedpi_core::adaptive::probe_tune_run::ProbeTuneRun;
 ///
 /// let mut ptr = ProbeTuneRun::default();
 /// ptr.register_strategy(1);
@@ -126,7 +126,7 @@ impl Default for PtrConfig {
 /// // Должно перейти в Run фазу
 /// assert!(ptr.tick(1));
 /// assert_eq!(ptr.state(1).unwrap().phase,
-///     byebyedpi_core::adaptive::probe_tune_run::StrategyPhase::Run);
+///     freedpi_core::adaptive::probe_tune_run::StrategyPhase::Run);
 /// ```
 pub struct ProbeTuneRun {
     /// Состояния стратегий (key = strategy_id)

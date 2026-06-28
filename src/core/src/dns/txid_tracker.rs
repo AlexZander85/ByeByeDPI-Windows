@@ -19,7 +19,7 @@
 //!
 //! ## Пример
 //! ```rust
-//! use byebyedpi_core::dns::txid_tracker::{TxidTracker, DnsThreatLevel};
+//! use freedpi_core::dns::txid_tracker::{TxidTracker, DnsThreatLevel};
 //!
 //! let mut tracker = TxidTracker::default();
 //!

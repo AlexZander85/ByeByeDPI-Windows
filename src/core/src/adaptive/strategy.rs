@@ -9,8 +9,8 @@
 //!
 //! ## Использование
 //! ```rust,no_run
-//! use byebyedpi_core::adaptive::strategy::*;
-//! use byebyedpi_core::conntrack::Conntrack;
+//! use freedpi_core::adaptive::strategy::*;
+//! use freedpi_core::conntrack::Conntrack;
 //! use anyhow::Result;
 //! use std::net::Ipv4Addr;
 //! use std::sync::Arc;
@@ -152,7 +152,7 @@ pub enum StrategyResult {
 ///
 /// # Пример
 /// ```rust
-/// use byebyedpi_core::adaptive::strategy::*;
+/// use freedpi_core::adaptive::strategy::*;
 /// use anyhow::Result;
 ///
 /// struct MySplitStrategy;
@@ -213,8 +213,8 @@ pub trait Strategy: Send + Sync + 'static {
 ///
 /// # Пример
 /// ```rust,no_run
-/// use byebyedpi_core::adaptive::strategy::*;
-/// use byebyedpi_core::conntrack::Conntrack;
+/// use freedpi_core::adaptive::strategy::*;
+/// use freedpi_core::conntrack::Conntrack;
 /// use anyhow::Result;
 /// use std::net::Ipv4Addr;
 /// use std::sync::Arc;

@@ -8,7 +8,7 @@
 //!
 //! ## Использование
 //! ```rust
-//! use byebyedpi_core::routing::domain_trie::DomainTrie;
+//! use freedpi_core::routing::domain_trie::DomainTrie;
 //!
 //! let mut trie = DomainTrie::new();
 //! trie.insert("www.google.com", true);

@@ -1,6 +1,6 @@
-# ByeByeDPI v3.0 -- Security & Performance Review
+# FreeDPI v3.0 -- Security & Performance Review
 
-**Scope:** Core network engine (`byebyedpi-core`), desync pipeline, conntrack, packet engine, and supporting infrastructure.  
+**Scope:** Core network engine (`FreeDPI-core`), desync pipeline, conntrack, packet engine, and supporting infrastructure.  
 **Reviewer:** Principal Network Architect / Rust Performance Expert  
 **Date:** 2026-06-28  
 **Risk Threshold:** Production (5-10 Gbps, gaming, 4K streaming)

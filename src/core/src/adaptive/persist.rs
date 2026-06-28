@@ -59,7 +59,7 @@ pub struct PersistenceConfig {
 ///
 /// # Пример
 /// ```rust,no_run
-/// use byebyedpi_core::adaptive::persist::PersistenceManager;
+/// use freedpi_core::adaptive::persist::PersistenceManager;
 ///
 /// # async fn example() {
 /// let pm = PersistenceManager::new(None);

@@ -1,6 +1,6 @@
-# 🔪 Principal Architect's "mimo" Review — ByeByeDPI Windows v3.0
+# 🔪 Principal Architect's "mimo" Review — FreeDPI Windows v3.0
 
-**Repository audited:** `AlexZander85/ByeByeDPI-Windows`
+**Repository audited:** `AlexZander85/FreeDPI-Windows`
 **Reviewer role:** Principal Network Architect / Rust Performance Expert (Staff)
 **Target load:** 5–10 Gbps aggregate (torrent swarm + 4K streaming + gaming)
 **Scope:** Hot-path of the WinDivert receiver → ProcessingPipeline → DesyncGroup → raw-socket reinjection
@@ -130,7 +130,7 @@ let producer = tokio::task::spawn_blocking(move || {
 
 // Single-threaded consumer (no tokio overhead for hot path)
 let consumer = std::thread::Builder::new()
-    .name("byebyedpi-consumer".into())
+    .name("FreeDPI-consumer".into())
     .spawn(move || {
         while let Some(slot) = ring.q.pop() {
             handle_one(slot);

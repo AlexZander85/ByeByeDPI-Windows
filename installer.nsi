@@ -1,21 +1,21 @@
-; ByeByeDPI NSIS Installer
+; FreeDPI NSIS Installer
 ; Requires: NSIS 3.x with MUI2
 
 !include "MUI2.nsh"
 
 ; ─── General ───────────────────────────────────────────────────────────────
-Name "ByeByeDPI"
-OutFile "ByeByeDPI-Setup.exe"
-InstallDir "$PROGRAMFILES\ByeByeDPI"
-InstallDirRegKey HKLM "Software\ByeByeDPI" "InstallDir"
+Name "FreeDPI"
+OutFile "FreeDPI-Setup.exe"
+InstallDir "$PROGRAMFILES\FreeDPI"
+InstallDirRegKey HKLM "Software\FreeDPI" "InstallDir"
 RequestExecutionLevel admin
 Unicode True
 
 ; ─── Version Info ──────────────────────────────────────────────────────────
 VIProductVersion "0.1.0.0"
-VIAddVersionKey "ProductName" "ByeByeDPI"
+VIAddVersionKey "ProductName" "FreeDPI"
 VIAddVersionKey "FileDescription" "DPI Bypass Service"
-VIAddVersionKey "LegalCopyright" "ByeByeDPI Team"
+VIAddVersionKey "LegalCopyright" "FreeDPI Team"
 VIAddVersionKey "FileVersion" "0.1.0"
 
 ; ─── Interface ─────────────────────────────────────────────────────────────
@@ -38,14 +38,14 @@ VIAddVersionKey "FileVersion" "0.1.0"
 !insertmacro MUI_LANGUAGE "English"
 
 ; ─── Sections ──────────────────────────────────────────────────────────────
-Section "ByeByeDPI (required)" SecMain
+Section "FreeDPI (required)" SecMain
     SectionIn RO
 
     SetOutPath "$INSTDIR"
 
     ; Install files
-    File "target\release\byebyedpi-service.exe"
-    File "target\release\byebyedpi-ui.exe"
+    File "target\release\FreeDPI-service.exe"
+    File "target\release\FreeDPI-ui.exe"
 
     ; Install WinDivert
     SetOutPath "$INSTDIR\WinDivert"
@@ -61,51 +61,51 @@ Section "ByeByeDPI (required)" SecMain
     CreateDirectory "$INSTDIR\data"
 
     ; Store install path
-    WriteRegStr HKLM "Software\ByeByeDPI" "InstallDir" "$INSTDIR"
+    WriteRegStr HKLM "Software\FreeDPI" "InstallDir" "$INSTDIR"
 
     ; Create uninstaller
     WriteUninstaller "$INSTDIR\Uninstall.exe"
 
     ; Add to Programs menu
-    CreateDirectory "$SMPROGRAMS\ByeByeDPI"
-    CreateShortCut "$SMPROGRAMS\ByeByeDPI\ByeByeDPI UI.lnk" "$INSTDIR\byebyedpi-ui.exe"
-    CreateShortCut "$SMPROGRAMS\ByeByeDPI\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
+    CreateDirectory "$SMPROGRAMS\FreeDPI"
+    CreateShortCut "$SMPROGRAMS\FreeDPI\FreeDPI UI.lnk" "$INSTDIR\FreeDPI-ui.exe"
+    CreateShortCut "$SMPROGRAMS\FreeDPI\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
 
     ; Add to Windows Firewall
-    ExecWait 'netsh advfirewall firewall add rule name="ByeByeDPI Service" dir=in action=allow program="$INSTDIR\byebyedpi-service.exe" enable=yes'
-    ExecWait 'netsh advfirewall firewall add rule name="ByeByeDPI API" dir=in action=allow program="$INSTDIR\byebyedpi-service.exe" enable=yes localport=11337 protocol=tcp'
+    ExecWait 'netsh advfirewall firewall add rule name="FreeDPI Service" dir=in action=allow program="$INSTDIR\FreeDPI-service.exe" enable=yes'
+    ExecWait 'netsh advfirewall firewall add rule name="FreeDPI API" dir=in action=allow program="$INSTDIR\FreeDPI-service.exe" enable=yes localport=11337 protocol=tcp'
 
 SectionEnd
 
 Section "Install Service" SecService
     ; Install as Windows Service
-    ExecWait '"$INSTDIR\byebyedpi-service.exe" --install'
+    ExecWait '"$INSTDIR\FreeDPI-service.exe" --install'
 SectionEnd
 
 Section "Create Firewall Rules" SecFirewall
-    ExecWait 'netsh advfirewall firewall add rule name="ByeByeDPI WinDivert" dir=in action=allow program="$INSTDIR\WinDivert\WinDivert.dll" enable=yes'
+    ExecWait 'netsh advfirewall firewall add rule name="FreeDPI WinDivert" dir=in action=allow program="$INSTDIR\WinDivert\WinDivert.dll" enable=yes'
 SectionEnd
 
 ; ─── Descriptions ──────────────────────────────────────────────────────────
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
     !insertmacro MUI_DESCRIPTION_TEXT ${SecMain} "Core files: service, UI, WinDivert"
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecService} "Install ByeByeDPI as Windows Service"
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecService} "Install FreeDPI as Windows Service"
     !insertmacro MUI_DESCRIPTION_TEXT ${SecFirewall} "Add Windows Firewall rules for WinDivert"
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 ; ─── Uninstaller ───────────────────────────────────────────────────────────
 Section "Uninstall"
     ; Stop service if running
-    ExecWait 'net stop ByeByeDPI'
+    ExecWait 'net stop FreeDPI'
 
     ; Remove firewall rules
-    ExecWait 'netsh advfirewall firewall delete rule name="ByeByeDPI Service"'
-    ExecWait 'netsh advfirewall firewall delete rule name="ByeByeDPI API"'
-    ExecWait 'netsh advfirewall firewall delete rule name="ByeByeDPI WinDivert"'
+    ExecWait 'netsh advfirewall firewall delete rule name="FreeDPI Service"'
+    ExecWait 'netsh advfirewall firewall delete rule name="FreeDPI API"'
+    ExecWait 'netsh advfirewall firewall delete rule name="FreeDPI WinDivert"'
 
     ; Remove files
-    Delete "$INSTDIR\byebyedpi-service.exe"
-    Delete "$INSTDIR\byebyedpi-ui.exe"
+    Delete "$INSTDIR\FreeDPI-service.exe"
+    Delete "$INSTDIR\FreeDPI-ui.exe"
     Delete "$INSTDIR\config.toml"
     Delete "$INSTDIR\Uninstall.exe"
     RMDir /r "$INSTDIR\WinDivert"
@@ -113,8 +113,8 @@ Section "Uninstall"
     RMDir "$INSTDIR"
 
     ; Remove shortcuts
-    RMDir /r "$SMPROGRAMS\ByeByeDPI"
+    RMDir /r "$SMPROGRAMS\FreeDPI"
 
     ; Remove registry
-    DeleteRegKey HKLM "Software\ByeByeDPI"
+    DeleteRegKey HKLM "Software\FreeDPI"
 SectionEnd

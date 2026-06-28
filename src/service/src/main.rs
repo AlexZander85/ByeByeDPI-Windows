@@ -1,16 +1,16 @@
-//! ByeByeDPI Windows Service
+//! FreeDPI Windows Service
 //!
 //! Запускает движок DPI-обхода как Windows Service.
 //! Одновременно запускает HTTP API для AI-агента.
 //!
 //! # Использование
 //! ```powershell
-//! .\byebyedpi-service.exe           # запуск (требует admin)
-//! .\byebyedpi-service.exe --api     # только API (без WinDivert)
-//! .\byebyedpi-service.exe --config  # показать конфиг
+//! .\FreeDPI-service.exe           # запуск (требует admin)
+//! .\FreeDPI-service.exe --api     # только API (без WinDivert)
+//! .\FreeDPI-service.exe --config  # показать конфиг
 //! ```
 
-use byebyedpi_core::{
+use freedpi_core::{
     config::Config,
     conntrack::Conntrack,
     routing::geo::GeoRouter,
@@ -19,7 +19,7 @@ use byebyedpi_core::{
     engine::{ProcessingPipeline, ProcessingConfig},
     infra::sentinel::Sentinel,
 };
-use byebyedpi_api::{EngineHandle, StrategyTestParams, StrategyTestResult, TuneParams, RoutingOverride};
+use freedpi_api::{EngineHandle, StrategyTestParams, StrategyTestResult, TuneParams, RoutingOverride};
 use clap::Parser;
 use std::path::PathBuf;
 use std::sync::{
@@ -30,7 +30,7 @@ use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
-#[command(name = "byebyedpi-service", version, about = "ByeByeDPI Windows Service")]
+#[command(name = "FreeDPI-service", version, about = "FreeDPI Windows Service")]
 struct Cli {
     #[arg(long, default_value = "config.toml")]
     config: PathBuf,
@@ -102,7 +102,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let cli = Cli::parse();
-    info!("ByeByeDPI Service v{}", env!("CARGO_PKG_VERSION"));
+    info!("FreeDPI Service v{}", env!("CARGO_PKG_VERSION"));
 
     let config = Config::load(&cli.config)?;
     let engine = Arc::new(ServiceEngine::new());
@@ -135,7 +135,7 @@ async fn main() -> anyhow::Result<()> {
         let engine_clone = engine.clone();
         info!("API at http://127.0.0.1:{}", api_port);
         tokio::spawn(async move {
-            byebyedpi_api::serve(engine_clone as Arc<dyn EngineHandle + Send + Sync>, api_key, api_port).await;
+            freedpi_api::serve(engine_clone as Arc<dyn EngineHandle + Send + Sync>, api_key, api_port).await;
         });
     }
 

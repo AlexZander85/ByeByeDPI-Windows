@@ -58,7 +58,7 @@ impl Default for GeoRouterConfig {
 ///
 /// ## Пример
 /// ```rust
-/// use byebyedpi_core::routing::geo::GeoRouter;
+/// use freedpi_core::routing::geo::GeoRouter;
 ///
 /// let router = GeoRouter::new_default();
 /// let decision = router.resolve("yandex.ru", None);

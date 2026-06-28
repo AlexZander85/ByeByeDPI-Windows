@@ -1,10 +1,10 @@
 [package]
-name = "byebyedpi-ui"
+name = "freedpi-ui"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "byebyedpi_ui_lib"
+name = "freedpi_ui_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

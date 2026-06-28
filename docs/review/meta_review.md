@@ -1,4 +1,4 @@
-# ByeByeDPI Windows v3.0 — Consolidated Meta-Review
+# FreeDPI Windows v3.0 — Consolidated Meta-Review
 
 **Дата:** 2026-06-28
 **Методология:** Консолидация 9 экспертных ревью с верификацией против реального кода
@@ -1018,7 +1018,7 @@ let new_csum = old_csum.wrapping_add(delta);
 323: crypto::chacha20_encrypt(packet, &key)
 ```
 
-**Проблема:** Ключ `[0x42; 32]` захардкожен. DPI может XOR с 0x42 на каждом байте → идентифицировать ByeByeDPI → заблокировать по сигнатуре.
+**Проблема:** Ключ `[0x42; 32]` захардкожен. DPI может XOR с 0x42 на каждом байте → идентифицировать FreeDPI → заблокировать по сигнатуре.
 
 **Решение:**
 ```rust

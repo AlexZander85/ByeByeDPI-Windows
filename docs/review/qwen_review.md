@@ -206,7 +206,7 @@ pub fn shannon_entropy_fixed(data: &[u8]) -> u32 {
 let e = std::time::SystemTime::now().duration_since(...).as_nanos() as u64;
 let seed = splitmix64(e ^ conn_id);
 ```
-**Почему это сломает трафик:** Современные DPI системы используют ML для анализа паттернов ByeByeDPI. Xorshift128** обратим (reversible). Зная время подключения (с точностью до секунды) и IP, DPI может brute-force'ом восстановить seed за микросекунды и предсказать все Jitter/TTL маскировки.
+**Почему это сломает трафик:** Современные DPI системы используют ML для анализа паттернов FreeDPI. Xorshift128** обратим (reversible). Зная время подключения (с точностью до секунды) и IP, DPI может brute-force'ом восстановить seed за микросекунды и предсказать все Jitter/TTL маскировки.
 **Патч:** Использовать `getrandom` (аппаратный `RDRAND`) для инициализации глобального состояния и криптографически стойкий PRNG (например, ChaCha8) для генерации паттернов.
 ```rust
 use rand_core::SeedableRng;

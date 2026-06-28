@@ -1,6 +1,6 @@
 //! Named Pipes — защищённый IPC для AI агента.
 //!
-//! Использует Windows Named Pipes (`\\.\pipe\byebyedpi_agent`)
+//! Использует Windows Named Pipes (`\\.\pipe\FreeDPI_agent`)
 //! вместо HTTP REST API для взаимодействия с AI агентом.
 //!
 //! Преимущества над HTTP:
@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 /// Имя pipe для AI агента.
-pub const PIPE_NAME: &str = "\\\\.\\pipe\\byebyedpi_agent";
+pub const PIPE_NAME: &str = "\\\\.\\pipe\\FreeDPI_agent";
 
 /// Сообщение от AI агента.
 #[derive(Debug, Clone, Serialize, Deserialize)]

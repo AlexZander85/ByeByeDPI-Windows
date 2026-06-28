@@ -1,12 +1,12 @@
 [package]
-name = "byebyedpi-service"
+name = "freedpi-service"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-byebyedpi-core = { path = "../core" }
-byebyedpi-api = { path = "../api" }
+freedpi-core = { path = "../core" }
+freedpi-api = { path = "../api" }
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

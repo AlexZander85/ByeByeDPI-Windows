@@ -1,5 +1,5 @@
 [package]
-name = "byebyedpi-core"
+name = "freedpi-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

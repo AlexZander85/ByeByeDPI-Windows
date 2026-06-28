@@ -1,4 +1,4 @@
-# ByeByeDPI Windows — Архитектура (Rust, v3.0)
+# FreeDPI Windows — Архитектура (Rust, v3.0)
 
 **Всего техник: ~180**
 - 45 — портировано из ByeDPI Android (TCP desync, TLS, QUIC, DNS, proxy fallback)
@@ -26,7 +26,7 @@
 
 ## Обзор
 
-**ByeByeDPI Windows** — Rust-приложение для обхода DPI-блокировок на Windows 11.
+**FreeDPI Windows** — Rust-приложение для обхода DPI-блокировок на Windows 11.
 Использует WinDivert + raw sockets для полного контроля над сетевыми пакетами
 на уровне, недоступном на Android (VPN sandbox).
 
@@ -84,7 +84,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         byebyedpi-win.exe                               │
+│                         FreeDPI-win.exe                               │
 │                                                                          │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
 │  │                Packet Engine (tokio + WinDivert)                  │   │
@@ -159,10 +159,10 @@
 ### 3.1 Cargo Workspace
 
 ```
-byebyedpi-win/
+FreeDPI-win/
 ├── Cargo.toml                    # workspace root
 ├── core/
-│   ├── Cargo.toml                # byebyedpi-core crate
+│   ├── Cargo.toml                # FreeDPI-core crate
 │   └── src/
 │       ├── lib.rs
 │       ├── packet_engine.rs      # WinDivert + raw sockets
@@ -917,15 +917,15 @@ Raw sockets и WinDivert требуют прав Администратора.
 **Архитектура Service + UI:**
 ```
 ┌─────────────────────────────────┐
-│ byebyedpi-service.exe (SYSTEM)  │
+│ FreeDPI-service.exe (SYSTEM)  │
 │ ├── WinDivert recv/send         │
 │ ├── Raw socket inject           │
 │ ├── HTTP API (localhost:11337)  │
 │ └── Named Pipe IPC              │
 └───────────┬─────────────────────┘
-            │ \\.\pipe\byebyedpi_agent
+            │ \\.\pipe\FreeDPI_agent
 ┌───────────▼─────────────────────┐
-│ byebyedpi-ui.exe (User)         │
+│ FreeDPI-ui.exe (User)         │
 │ ├── System tray                 │
 │ ├── GUI (Tauri v2 + React)      │
 │ └── AI Agent API                │
@@ -2192,7 +2192,7 @@ impl AppRouter {
 
 ### 18.23 Техники из SpoofDPI (6 шт)
 
-[SpoofDPI](https://github.com/xvzc/SpoofDPI) — Go DPI-bypass tool. Уникальные подходы к фрагментации, DNS оптимизации и маршрутизации. Заимствованы в Rust-реализацию ByeByeDPI.
+[SpoofDPI](https://github.com/xvzc/SpoofDPI) — Go DPI-bypass tool. Уникальные подходы к фрагментации, DNS оптимизации и маршрутизации. Заимствованы в Rust-реализацию FreeDPI.
 
 **Ключевые отличия от других проектов:**
 - TOML-конфигурируемые segment plans с noise-параметром (нет ни в одном другом DPI-bypass)
@@ -2333,7 +2333,7 @@ example.com → **.com (false)
 
 ```
 ┌─────────────────────────────────────────────┐
-│              byebyedpi-win                    │
+│              FreeDPI-win                    │
 │                                               │
 │  ┌──────────┐   ┌──────────────────────────┐ │
 │  │  Engine   │──►│  HTTP API (Axum :11337)  │ │

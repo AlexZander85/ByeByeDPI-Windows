@@ -483,7 +483,7 @@ pub fn fake_sni(
 /// ## Использование
 /// Применяется как пост-процессор к результату другой техники:
 /// ```rust,no_run
-/// # use byebyedpi_core::desync::tcp;
+/// # use freedpi_core::desync::tcp;
 /// # let packet = bytes::Bytes::from(vec![0u8; 40]);
 /// let result = tcp::multisplit(&packet, 1, 3, 1);
 /// let reversed = tcp::reverse_fragment_order(result);

@@ -14,8 +14,8 @@
 //!
 //! ## Пример
 //! ```rust
-//! use byebyedpi_core::routing::chain::EgressChain;
-//! use byebyedpi_core::routing::EgressHop;
+//! use freedpi_core::routing::chain::EgressChain;
+//! use freedpi_core::routing::EgressHop;
 //!
 //! let chain = EgressChain::new(vec![
 //!     EgressHop::direct(),

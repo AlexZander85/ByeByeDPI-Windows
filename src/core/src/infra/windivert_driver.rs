@@ -54,7 +54,7 @@ pub fn install_driver() -> Result<()> {
     info!("Installing WinDivert driver from {}", sys_path.display());
 
     // Anti-race mutex (из sing-box)
-    let mutex_name = windows::core::HSTRING::from("Global\\ByeByeDPI_WinDivert_Install_Mutex");
+    let mutex_name = windows::core::HSTRING::from("Global\\FreeDPI_WinDivert_Install_Mutex");
     unsafe {
         let mutex = windows::Win32::System::Threading::CreateMutexW(None, true, &mutex_name);
         if let Ok(m) = mutex {

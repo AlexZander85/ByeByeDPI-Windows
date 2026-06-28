@@ -1,3 +1,3 @@
 fn main() {
-    byebyedpi_ui_lib::run()
+    freedpi_ui_lib::run()
 }

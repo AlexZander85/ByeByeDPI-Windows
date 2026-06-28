@@ -1,4 +1,4 @@
-//! ByeByeDPI Windows Core Library
+//! FreeDPI Windows Core Library
 //!
 //! Core library providing the packet engine, connection tracking,
 //! split tunneling, and runtime infrastructure for DPI bypass on Windows.

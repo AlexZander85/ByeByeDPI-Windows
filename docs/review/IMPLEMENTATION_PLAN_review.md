@@ -1,4 +1,4 @@
-# ByeByeDPI Windows v3.0 — Implementation Plan (по файлам)
+# FreeDPI Windows v3.0 — Implementation Plan (по файлам)
 
 **Источник:** `meta_review.md` — 30 уникальных проблем из 9 экспертных ревью
 **Принцип:** каждая задача = один файл, все изменения в нём сразу

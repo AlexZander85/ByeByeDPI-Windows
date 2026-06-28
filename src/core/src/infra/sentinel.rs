@@ -20,7 +20,7 @@
 //!
 //! ## Пример
 //! ```rust,no_run
-//! use byebyedpi_core::infra::sentinel::Sentinel;
+//! use freedpi_core::infra::sentinel::Sentinel;
 //! use std::sync::Arc;
 //! let sentinel = Arc::new(Sentinel::create());
 //! sentinel.start_monitor(); // Запуск фонового потока

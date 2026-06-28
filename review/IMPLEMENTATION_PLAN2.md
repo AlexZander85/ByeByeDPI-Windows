@@ -1,4 +1,4 @@
-# ByeByeDPI v3.1 — Implementation Plan 2 (P0-P2 Features)
+# FreeDPI v3.1 — Implementation Plan 2 (P0-P2 Features)
 
 **Источник:** Анализ GreenTunnel, NoDPI, Demergi
 **Дата:** 2026-06-28

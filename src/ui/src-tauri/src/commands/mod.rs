@@ -62,7 +62,7 @@ pub async fn get_conntrack(api_port: Option<u16>) -> Result<serde_json::Value, S
 pub async fn get_config() -> Result<serde_json::Value, String> {
     let config_path = dirs::config_dir()
         .unwrap_or_default()
-        .join("ByeByeDPI")
+        .join("FreeDPI")
         .join("config.toml");
 
     if !config_path.exists() {
@@ -80,7 +80,7 @@ pub async fn get_config() -> Result<serde_json::Value, String> {
 pub async fn save_config(raw: String) -> Result<(), String> {
     let config_path = dirs::config_dir()
         .unwrap_or_default()
-        .join("ByeByeDPI")
+        .join("FreeDPI")
         .join("config.toml");
 
     if let Some(parent) = config_path.parent() {

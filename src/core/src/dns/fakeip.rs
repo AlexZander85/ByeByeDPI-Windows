@@ -41,7 +41,7 @@ const FAKEIP_MASK: u32 = 0x00FF_FFFF;
 ///
 /// # Пример
 /// ```rust
-/// use byebyedpi_core::dns::fakeip::FakeIpManager;
+/// use freedpi_core::dns::fakeip::FakeIpManager;
 ///
 /// let manager = FakeIpManager::new(10_000);
 /// let ip = manager.allocate("example.com").unwrap();

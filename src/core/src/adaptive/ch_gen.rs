@@ -87,7 +87,7 @@ static TEMPLATE_BYTES: LazyLock<Vec<u8>> =
 ///
 /// # Пример
 /// ```rust
-/// use byebyedpi_core::adaptive::ch_gen::build_client_hello;
+/// use freedpi_core::adaptive::ch_gen::build_client_hello;
 /// let ch = build_client_hello("example.com");
 /// assert_eq!(ch.len(), 517);
 /// assert_eq!(ch[0], 0x16); // TLS record: Handshake
@@ -180,7 +180,7 @@ pub fn build_client_hello(sni: &str) -> Vec<u8> {
 ///
 /// # Пример
 /// ```rust
-/// use byebyedpi_core::adaptive::ch_gen::{build_client_hello, parse_sni};
+/// use freedpi_core::adaptive::ch_gen::{build_client_hello, parse_sni};
 /// let ch = build_client_hello("example.com");
 /// assert_eq!(parse_sni(&ch), Some("example.com".to_string()));
 /// ```

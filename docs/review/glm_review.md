@@ -1,8 +1,8 @@
-# ByeByeDPI Windows v3.0 — Беспощадное архитектурное ревью
+# FreeDPI Windows v3.0 — Беспощадное архитектурное ревью
 
 **Аудитор:** Principal Network Architect / Rust Performance Expert (Staff)
 **Цель:** скрытые узкие места при 5–10 Gbps (торренты + 4K стриминг), математические уязвимости в десинхронизации, логические дыры в TCP state machine.
-**Метод:** статический анализ исходников репозитория `AlexZander85/ByeByeDPI-Windows` (полный `src/core/`).
+**Метод:** статический анализ исходников репозитория `AlexZander85/FreeDPI-Windows` (полный `src/core/`).
 **Версия кода:** HEAD на момент клонирования.
 
 ---

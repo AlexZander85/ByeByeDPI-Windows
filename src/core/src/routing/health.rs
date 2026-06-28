@@ -11,7 +11,7 @@
 //!
 //! ## Пример
 //! ```rust
-//! use byebyedpi_core::routing::health::{HealthChecker, ProxyStatus, ProxyType};
+//! use freedpi_core::routing::health::{HealthChecker, ProxyStatus, ProxyType};
 //!
 //! let mut checker = HealthChecker::new();
 //! checker.add_socks5("127.0.0.1", 9050);

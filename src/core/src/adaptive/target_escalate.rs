@@ -23,7 +23,7 @@
 //!
 //! ## Пример
 //! ```rust
-//! use byebyedpi_core::adaptive::target_escalate::{TargetEscalation, EscalationLevel};
+//! use freedpi_core::adaptive::target_escalate::{TargetEscalation, EscalationLevel};
 //!
 //! let mut esc = TargetEscalation::default();
 //! assert_eq!(esc.current_level(), EscalationLevel::L0Gentle);

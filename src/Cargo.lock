@@ -187,67 +187,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
-name = "byebyedpi-api"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "byebyedpi-core",
- "chrono",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "byebyedpi-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "chrono",
- "crossbeam",
- "dashmap",
- "getrandom 0.2.17",
- "ipnet",
- "moka",
- "num_cpus",
- "pnet_packet",
- "rand",
- "rayon",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tinyvec",
- "tokio",
- "toml",
- "tracing",
- "trust-dns-resolver",
- "uuid",
- "windivert",
- "windows",
-]
-
-[[package]]
-name = "byebyedpi-service"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "byebyedpi-api",
- "byebyedpi-core",
- "clap",
- "num_cpus",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "bytes"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -544,6 +483,67 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "freedpi-api"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "freedpi-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "freedpi-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "chrono",
+ "crossbeam",
+ "dashmap",
+ "getrandom 0.2.17",
+ "ipnet",
+ "moka",
+ "num_cpus",
+ "pnet_packet",
+ "rand",
+ "rayon",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tinyvec",
+ "tokio",
+ "toml",
+ "tracing",
+ "trust-dns-resolver",
+ "uuid",
+ "windivert",
+ "windows",
+]
+
+[[package]]
+name = "freedpi-service"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "freedpi-api",
+ "freedpi-core",
+ "num_cpus",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

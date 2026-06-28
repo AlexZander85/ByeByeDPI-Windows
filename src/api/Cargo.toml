@@ -1,11 +1,11 @@
 [package]
-name = "byebyedpi-api"
+name = "freedpi-api"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-byebyedpi-core = { path = "../core" }
+freedpi-core = { path = "../core" }
 tokio.workspace = true
 axum.workspace = true
 serde.workspace = true

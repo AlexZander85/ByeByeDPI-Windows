@@ -1,4 +1,4 @@
-# ByeByeDPI Windows — План реализации (Rust, v3.0)
+# FreeDPI Windows — План реализации (Rust, v3.0)
 
 ## 1. Добавленные техники
 
@@ -74,7 +74,7 @@
 ### P0.0: Cargo workspace
 
 ```bash
-byebyedpi-win/
+FreeDPI-win/
 ├── Cargo.toml                    # [workspace]
 │   members = ["core", "ffi-bridge", "api", "service", "ui"]
 ├── core/                         # Основной Rust-крейт
@@ -1990,7 +1990,7 @@ fn service_main(_args: Vec<String>) {
     };
     
     let status_handle = register_service_control_handler(
-        "ByeByeDPI", handler
+        "FreeDPI", handler
     ).unwrap();
     
     status_handle.set_service_status(
@@ -2006,7 +2006,7 @@ fn service_main(_args: Vec<String>) {
     let api_key = load_or_generate_api_key();
     let api_port = 11337;
     rt.io.spawn(async move {
-        byebyedpi_api::serve(
+        FreeDPI_api::serve(
             engine_clone,
             api_key,
             api_port,
@@ -2029,7 +2029,7 @@ use std::sync::mpsc;
 fn main() {
     let (tx, rx) = mpsc::channel();
     
-    let mut tray = TrayItem::new("ByeByeDPI", IconSource::Resource("icon"))
+    let mut tray = TrayItem::new("FreeDPI", IconSource::Resource("icon"))
         .unwrap();
     
     tray.add_menu_item("Start/Stop", move || {
@@ -2070,11 +2070,11 @@ fn main() {
 cargo build --release
 
 # Запуск (требует admin)
-.\target\release\byebyedpi-service.exe install
-.\target\release\byebyedpi-service.exe start
+.\target\release\FreeDPI-service.exe install
+.\target\release\FreeDPI-service.exe start
 
 # UI (системный трей)
-.\target\release\byebyedpi-ui.exe
+.\target\release\FreeDPI-ui.exe
 ```
 
 ### Пайплайн CI
@@ -2241,7 +2241,7 @@ src/ui/                          # Tauri v2 проект (вне workspace)
 │   │   ├── useSettings.ts       # Config read/write
 │   │   └── useTheme.ts
 │   ├── lib/
-│   │   ├── api.ts               # HTTP client для byebyedpi API
+│   │   ├── api.ts               # HTTP client для FreeDPI API
 │   │   └── utils.ts             # cn()
 │   ├── components/
 │   │   ├── Dashboard.tsx        # Главный view (tabs)
