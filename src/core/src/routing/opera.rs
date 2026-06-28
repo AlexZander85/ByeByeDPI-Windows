@@ -94,14 +94,22 @@ impl OperaVpnProvider {
     pub async fn check_health(&mut self) {
         self.health_checker.check_all().await;
         for proxy in &mut self.proxies {
-            let result = self.health_checker.get_result(&proxy.host, proxy.port, ProxyType::Socks5);
+            let result = self
+                .health_checker
+                .get_result(&proxy.host, proxy.port, ProxyType::Socks5);
             proxy.status = result.map(|r| r.status).unwrap_or(ProxyStatus::Dead);
             match proxy.status {
                 ProxyStatus::Alive => {
-                    debug!("Opera VPN {}:{} ({}) — alive", proxy.host, proxy.port, proxy.location);
+                    debug!(
+                        "Opera VPN {}:{} ({}) — alive",
+                        proxy.host, proxy.port, proxy.location
+                    );
                 }
                 ProxyStatus::Dead => {
-                    debug!("Opera VPN {}:{} ({}) — dead", proxy.host, proxy.port, proxy.location);
+                    debug!(
+                        "Opera VPN {}:{} ({}) — dead",
+                        proxy.host, proxy.port, proxy.location
+                    );
                 }
                 ProxyStatus::Unknown => {}
             }
@@ -112,7 +120,10 @@ impl OperaVpnProvider {
     ///
     /// ## Returns
     /// `JoinHandle` для отмены через `.abort()`.
-    pub fn start_background_check(self: Arc<Self>, interval: Duration) -> tokio::task::JoinHandle<()> {
+    pub fn start_background_check(
+        self: Arc<Self>,
+        interval: Duration,
+    ) -> tokio::task::JoinHandle<()> {
         let checker = self.health_checker.clone();
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(interval);
@@ -137,7 +148,10 @@ impl OperaVpnProvider {
 
     /// Возвращает все живые прокси.
     pub fn alive_proxies(&self) -> Vec<&OperaProxy> {
-        self.proxies.iter().filter(|p| p.status == ProxyStatus::Alive).collect()
+        self.proxies
+            .iter()
+            .filter(|p| p.status == ProxyStatus::Alive)
+            .collect()
     }
 
     /// Обновляет список прокси.
@@ -180,7 +194,10 @@ impl OperaVpnProvider {
         }
 
         // 2. Fallback на hardcoded список
-        debug!("Using hardcoded Opera VPN proxy list ({} servers)", OPERA_PROXIES.len());
+        debug!(
+            "Using hardcoded Opera VPN proxy list ({} servers)",
+            OPERA_PROXIES.len()
+        );
     }
 
     /// Возвращает количество прокси.

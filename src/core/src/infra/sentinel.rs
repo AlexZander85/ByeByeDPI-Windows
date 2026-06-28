@@ -74,7 +74,11 @@ impl Sentinel {
             if !parent.exists() {
                 match std::fs::create_dir_all(parent) {
                     Ok(_) => info!("Sentinel directory created: {}", parent.display()),
-                    Err(e) => warn!("Cannot create sentinel directory {}: {}", parent.display(), e),
+                    Err(e) => warn!(
+                        "Cannot create sentinel directory {}: {}",
+                        parent.display(),
+                        e
+                    ),
                 }
             }
         }
@@ -99,13 +103,17 @@ impl Sentinel {
     fn determine_path() -> PathBuf {
         // Пробуем ProgramData (машина)
         if let Ok(prog_data) = std::env::var("ProgramData") {
-            let path = PathBuf::from(prog_data).join(BYEDPI_DIR).join(SENTINEL_FILENAME);
+            let path = PathBuf::from(prog_data)
+                .join(BYEDPI_DIR)
+                .join(SENTINEL_FILENAME);
             return path;
         }
 
         // Fallback на AppData (пользователь)
         if let Ok(app_data) = std::env::var("APPDATA") {
-            let path = PathBuf::from(app_data).join(BYEDPI_DIR).join(SENTINEL_FILENAME);
+            let path = PathBuf::from(app_data)
+                .join(BYEDPI_DIR)
+                .join(SENTINEL_FILENAME);
             return path;
         }
 
@@ -155,7 +163,10 @@ impl Sentinel {
         std::thread::Builder::new()
             .name("sentinel-monitor".to_string())
             .spawn(move || {
-                info!("Sentinel monitor started (check every {}s)", interval.as_secs());
+                info!(
+                    "Sentinel monitor started (check every {}s)",
+                    interval.as_secs()
+                );
 
                 // Делаем snapshot указателя для проверки running
                 while self.running.load(Ordering::Acquire) {

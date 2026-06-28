@@ -84,8 +84,7 @@ impl GeoBlockDetector {
                 if line_lower.starts_with("x-block-reason:")
                     || line_lower.starts_with("x-geo-block:")
                     || (line_lower.starts_with("location:")
-                        && (line_lower.contains("block")
-                            || line_lower.contains("error")))
+                        && (line_lower.contains("block") || line_lower.contains("error")))
                 {
                     return true;
                 }

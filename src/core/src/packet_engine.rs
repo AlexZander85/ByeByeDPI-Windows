@@ -18,12 +18,12 @@
 //! - `send(&packet)` блокирующий, принимает ссылку на пакет
 //! - `set_param(param, u64)` — значения теперь `u64`
 
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use std::sync::atomic::{AtomicU64, Ordering};
-use tracing::{debug, error, warn, info};
-use windivert::WinDivert;
-use windivert::prelude::*;
+use tracing::{debug, error, info, warn};
 use windivert::prelude::WinDivertParam;
+use windivert::prelude::*;
+use windivert::WinDivert;
 
 /// Размер буфера для WinDivert recv (максимальный MTU + заголовки).
 #[allow(dead_code)]
@@ -149,13 +149,14 @@ impl PacketEngine {
     }
 
     /// Блокирующий перехват пакета.
-    pub fn recv_blocking(&self, buffer: &mut [u8]) -> Result<(bytes::Bytes, WinDivertAddress<NetworkLayer>)> {
+    pub fn recv_blocking(
+        &self,
+        buffer: &mut [u8],
+    ) -> Result<(bytes::Bytes, WinDivertAddress<NetworkLayer>)> {
         let Some(ref divert) = self.divert else {
             anyhow::bail!("WinDivert not initialized (API-only mode)");
         };
-        let packet = divert
-            .recv(buffer)
-            .context("WinDivert recv failed")?;
+        let packet = divert.recv(buffer).context("WinDivert recv failed")?;
         self.stats.packets_received.fetch_add(1, Ordering::Relaxed);
         Ok((bytes::Bytes::copy_from_slice(&packet.data), packet.address))
     }
@@ -164,7 +165,11 @@ impl PacketEngine {
     ///
     /// Пакет проходит через WinDivert — может быть снова перехвачен.
     /// Должен быть запущен через `spawn_blocking`.
-    pub fn send_blocking(&self, packet: &[u8], addr: &WinDivertAddress<NetworkLayer>) -> Result<u32> {
+    pub fn send_blocking(
+        &self,
+        packet: &[u8],
+        addr: &WinDivertAddress<NetworkLayer>,
+    ) -> Result<u32> {
         let Some(ref divert) = self.divert else {
             anyhow::bail!("WinDivert not initialized (API-only mode)");
         };
@@ -351,14 +356,7 @@ impl RawSocketTx {
     unsafe fn new() -> Result<Self> {
         use windows::Win32::Networking::WinSock::*;
 
-        let sock = WSASocketW(
-            AF_INET.0 as i32,
-            SOCK_RAW.0,
-            IPPROTO_RAW.0,
-            None,
-            0,
-            0,
-        )?;
+        let sock = WSASocketW(AF_INET.0 as i32, SOCK_RAW.0, IPPROTO_RAW.0, None, 0, 0)?;
 
         if sock == INVALID_SOCKET {
             anyhow::bail!("WSASocketW failed: {}", WSAGetLastError().0);
@@ -371,7 +369,10 @@ impl RawSocketTx {
             sock,
             IPPROTO_IP.0,
             IP_HDRINCL,
-            Some(std::slice::from_raw_parts(opt_ptr, std::mem::size_of::<u32>())),
+            Some(std::slice::from_raw_parts(
+                opt_ptr,
+                std::mem::size_of::<u32>(),
+            )),
         );
         if result == SOCKET_ERROR {
             let _ = closesocket(sock);
@@ -390,10 +391,7 @@ impl RawSocketTx {
     /// Пакет должен содержать полный IP header + payload.
     /// sendto на raw socket игнорирует адрес назначения — он берётся из IP header.
     fn send(&self, packet: &[u8]) -> Result<()> {
-        let addr = std::net::SocketAddrV4::new(
-            std::net::Ipv4Addr::UNSPECIFIED,
-            0,
-        );
+        let addr = std::net::SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, 0);
         let sent = self.sock.send_to(packet, addr)?;
         if sent != packet.len() {
             anyhow::bail!("sendto sent {} of {} bytes", sent, packet.len());
@@ -418,9 +416,15 @@ mod tests {
     #[test]
     fn test_packet_stats_snapshot() {
         let engine = PacketEngine::new_api_only();
-        engine.stats.packets_received.fetch_add(1, Ordering::Relaxed);
+        engine
+            .stats
+            .packets_received
+            .fetch_add(1, Ordering::Relaxed);
         engine.stats.packets_sent.fetch_add(2, Ordering::Relaxed);
-        engine.stats.packets_injected.fetch_add(3, Ordering::Relaxed);
+        engine
+            .stats
+            .packets_injected
+            .fetch_add(3, Ordering::Relaxed);
         engine.stats.packets_dropped.fetch_add(4, Ordering::Relaxed);
 
         let snap = engine.stats_snapshot();

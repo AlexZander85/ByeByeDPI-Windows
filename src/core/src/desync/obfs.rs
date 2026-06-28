@@ -37,11 +37,7 @@ use tracing::debug;
 /// H = -Σ p(x) * log2(p(x))
 /// H ≈ 0: один байт повторяется
 /// H ≈ 8: все байты уникальны (максимальная энтропия)
-pub fn entropy_padding(
-    packet: &[u8],
-    target_entropy: f64,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn entropy_padding(packet: &[u8], target_entropy: f64, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -70,14 +66,19 @@ pub fn entropy_padding(
 
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_seg = build_udp_like_segment(
-        ip.src, ip.dst, 443, 443,
+        ip.src,
+        ip.dst,
+        443,
+        443,
         &padding,
         fake_ttl,
         ip.identification.wrapping_add(1),
     );
 
-    debug!("[RP8] Entropy: current={:.2} target={:.2} pad={} bytes",
-        current_entropy, target_entropy, pad_size);
+    debug!(
+        "[RP8] Entropy: current={:.2} target={:.2} pad={} bytes",
+        current_entropy, target_entropy, pad_size
+    );
 
     DesyncResult::inject_only(fake_seg)
 }
@@ -125,9 +126,13 @@ static NEG_P_LOG_P: LazyLock<[u16; 257]> = LazyLock::new(|| {
 });
 
 pub fn shannon_entropy_fast(data: &[u8]) -> u16 {
-    if data.is_empty() { return 0; }
+    if data.is_empty() {
+        return 0;
+    }
     let mut freq = [0u32; 256];
-    for &b in data { freq[b as usize] += 1; }
+    for &b in data {
+        freq[b as usize] += 1;
+    }
     let len = data.len() as u32;
     let mut entropy: u32 = 0;
     for &c in &freq {
@@ -151,11 +156,7 @@ fn generate_entropy_padding(size: usize, _target_entropy: f64) -> Vec<u8> {
 /// ## Принцип
 /// DPI может использовать размер пакета для идентификации.
 /// Дополняем пакет до ближайшего кратного размера (128/256/512/1024).
-pub fn pad_size(
-    packet: &[u8],
-    target_size: usize,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn pad_size(packet: &[u8], target_size: usize, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -171,14 +172,21 @@ pub fn pad_size(
 
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_seg = build_udp_like_segment(
-        ip.src, ip.dst, 443, 443,
+        ip.src,
+        ip.dst,
+        443,
+        443,
         &padding,
         fake_ttl,
         ip.identification.wrapping_add(1),
     );
 
-    debug!("[CT5] PadSize: {} → {} ({} bytes padding)",
-        packet.len(), target_size, pad_needed);
+    debug!(
+        "[CT5] PadSize: {} → {} ({} bytes padding)",
+        packet.len(),
+        target_size,
+        pad_needed
+    );
 
     DesyncResult::inject_only(fake_seg)
 }
@@ -190,11 +198,7 @@ pub fn pad_size(
 /// DPI видит зашифрованные данные в начале пакета.
 /// Сервер расшифровывает (если他知道 ключ).
 /// Используется для обхода DPI, который проверяет первые байты payload.
-pub fn xor_first(
-    packet: &[u8],
-    n: usize,
-    key: u8,
-) -> DesyncResult {
+pub fn xor_first(packet: &[u8], n: usize, key: u8) -> DesyncResult {
     if packet.len() < 20 + n {
         return DesyncResult::passthrough();
     }
@@ -225,7 +229,8 @@ pub fn xor_first(
         }
         if ip_header_len + tcp_len(modified.len(), ip_header_len) <= modified.len() {
             let tcp_csum = crate::desync::tcp_checksum_v4(
-                src, dst,
+                src,
+                dst,
                 &modified[ip_header_len..ip_header_len + tcp_len(modified.len(), ip_header_len)],
             );
             if ip_header_len + 18 <= modified.len() {
@@ -265,7 +270,13 @@ static POISSON_LUT: LazyLock<[u8; 256]> = LazyLock::new(|| {
         let u = i as f64 / 256.0;
         let delay = if u < 0.999 {
             let v = -(1.0 - u).ln() * 20.0;
-            if v < 1.0 { 1u8 } else if v > 100.0 { 100u8 } else { v as u8 }
+            if v < 1.0 {
+                1u8
+            } else if v > 100.0 {
+                100u8
+            } else {
+                v as u8
+            }
         } else {
             100u8
         };
@@ -286,10 +297,7 @@ pub fn poisson_delay_fast(_lambda_ms: u64) -> u64 {
 /// Оборачиваем UDP payload в WireGuard-подобный формат:
 /// type(1) + reserved(3) + receiver_index(4) + encrypted_data.
 /// DPI видит WireGuard трафик и может пропустить его.
-pub fn wg_obfs(
-    packet: &[u8],
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn wg_obfs(packet: &[u8], fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -311,13 +319,20 @@ pub fn wg_obfs(
 
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_udp = crate::desync::quic::build_udp_packet(
-        ip.src, ip.dst, 12345, 443,
-        &wg_payload, fake_ttl,
+        ip.src,
+        ip.dst,
+        12345,
+        443,
+        &wg_payload,
+        fake_ttl,
         ip.identification.wrapping_add(1),
     );
 
-    debug!("[Z11] WgObfs: {} → {} bytes (WireGuard wrapper)",
-        payload.len(), wg_payload.len());
+    debug!(
+        "[Z11] WgObfs: {} → {} bytes (WireGuard wrapper)",
+        payload.len(),
+        wg_payload.len()
+    );
 
     DesyncResult::inject_only(fake_udp)
 }
@@ -327,10 +342,7 @@ pub fn wg_obfs(
 /// ## Принцип
 /// XOR-обфускация IP протокола и первого байта payload.
 /// DPI может не распознать протокол после XOR.
-pub fn ip_ppxor(
-    packet: &[u8],
-    _fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn ip_ppxor(packet: &[u8], _fake_ttl_offset: u8) -> DesyncResult {
     if parse_ip_header(packet).is_none() {
         return DesyncResult::passthrough();
     }
@@ -365,16 +377,14 @@ pub fn ip_ppxor(
 /// Оборачиваем UDP дейтаграмму в ICMP Echo Request payload.
 /// DPI может не инспектировать ICMP payloads.
 /// Сервер конвертирует обратно.
-pub fn udp2icmp(
-    packet: &[u8],
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn udp2icmp(packet: &[u8], fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
     };
 
-    if ip.protocol.0 != 17 { // UDP
+    if ip.protocol.0 != 17 {
+        // UDP
         return DesyncResult::passthrough();
     }
 
@@ -400,14 +410,18 @@ pub fn udp2icmp(
 
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_icmp = build_icmp_packet(
-        ip.src, ip.dst,
+        ip.src,
+        ip.dst,
         &icmp_payload,
         fake_ttl,
         ip.identification.wrapping_add(1),
     );
 
-    debug!("[Z13] Udp2Icmp: UDP {} bytes → ICMP {} bytes",
-        udp_payload.len(), icmp_payload.len());
+    debug!(
+        "[Z13] Udp2Icmp: UDP {} bytes → ICMP {} bytes",
+        udp_payload.len(),
+        icmp_payload.len()
+    );
 
     DesyncResult::inject_only(fake_icmp)
 }
@@ -579,7 +593,8 @@ mod tests {
             Ipv4Addr::new(192, 168, 1, 1),
             Ipv4Addr::new(8, 8, 8, 8),
             &[0x08, 0x00, 0x00, 0x00, 0x01, 0x02, 0x00, 0x01],
-            64, 1,
+            64,
+            1,
         );
         assert_eq!(pkt[0] >> 4, 4); // IPv4
         assert_eq!(pkt[9], 1); // ICMP protocol
@@ -590,9 +605,11 @@ mod tests {
         let pkt = build_udp_like_segment(
             Ipv4Addr::new(192, 168, 1, 1),
             Ipv4Addr::new(8, 8, 8, 8),
-            12345, 443,
+            12345,
+            443,
             &[0x01, 0x02],
-            64, 1,
+            64,
+            1,
         );
         assert_eq!(pkt[0] >> 4, 4); // IPv4
         assert_eq!(pkt[9], 17); // UDP protocol
@@ -601,9 +618,8 @@ mod tests {
     #[test]
     fn test_xor_first() {
         let packet = vec![
-            0x45, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x40, 0x00,
-            0x40, 0x06, 0x00, 0x00, 0xc0, 0xa8, 0x01, 0x01,
-            0x08, 0x08, 0x08, 0x08, 0x41, 0x42, 0x43, 0x44,
+            0x45, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, 0xc0, 0xa8,
+            0x01, 0x01, 0x08, 0x08, 0x08, 0x08, 0x41, 0x42, 0x43, 0x44,
         ];
         let result = xor_first(&packet, 2, 0xFF);
         assert!(result.modified.is_some());

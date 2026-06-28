@@ -145,11 +145,7 @@ pub fn title_case(packet: &[u8]) -> DesyncResult {
 /// Разделяем HTTP/2 HPACK-закодированные заголовки на границах
 /// HPACK entries. DPI может не собрать HPACK из нескольких TCP
 /// сегментов, так как HPACK использует динамическую таблицу.
-pub fn h2_hpack_aware(
-    packet: &[u8],
-    split_at: usize,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn h2_hpack_aware(packet: &[u8], split_at: usize, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -176,8 +172,14 @@ pub fn h2_hpack_aware(
     // Фрагмент 1: начало HPACK (до split_at)
     let frag1_payload = &tcp.payload[..split_at];
     let frag1 = build_tcp_segment_http(
-        src, dst, src_port, dst_port,
-        seq, ack, window, frag1_payload,
+        src,
+        dst,
+        src_port,
+        dst_port,
+        seq,
+        ack,
+        window,
+        frag1_payload,
         ip.ttl.saturating_sub(fake_ttl_offset),
         ip.identification.wrapping_add(1),
     );
@@ -185,8 +187,14 @@ pub fn h2_hpack_aware(
     // Фрагмент 2: остаток HPACK
     let frag2_payload = &tcp.payload[split_at..];
     let frag2 = build_tcp_segment_http(
-        src, dst, src_port, dst_port,
-        seq.wrapping_add(split_at as u32), ack, window, frag2_payload,
+        src,
+        dst,
+        src_port,
+        dst_port,
+        seq.wrapping_add(split_at as u32),
+        ack,
+        window,
+        frag2_payload,
         ip.ttl,
         ip.identification.wrapping_add(2),
     );
@@ -202,10 +210,7 @@ pub fn h2_hpack_aware(
 /// Отправляем перед реальным HTTP/2 запросом фейковые HPACK entries,
 /// которые заполняют динамическую таблицу DPI. DPI может потратить
 /// ресурсы на обработку фейковых entries.
-pub fn hpack_bomber(
-    packet: &[u8],
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn hpack_bomber(packet: &[u8], fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -227,8 +232,13 @@ pub fn hpack_bomber(
 
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_seg = build_tcp_segment_http(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        tcp.sequence, tcp.acknowledgment, tcp.window,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        tcp.sequence,
+        tcp.acknowledgment,
+        tcp.window,
         &fake_hpack,
         fake_ttl,
         ip.identification.wrapping_add(1),
@@ -262,12 +272,7 @@ fn is_http2_frame(payload: &[u8]) -> bool {
 }
 
 /// Замена Host заголовка на fake.
-fn replace_host_header(
-    packet: &mut [u8],
-    data_offset: usize,
-    payload: &[u8],
-    fake_host: &str,
-) {
+fn replace_host_header(packet: &mut [u8], data_offset: usize, payload: &[u8], fake_host: &str) {
     if let Some(pos) = find_header(payload, "Host: ") {
         let header_start = data_offset + pos + 6; // "Host: ".len()
         let line_end = find_line_end(payload, pos);
@@ -285,11 +290,7 @@ fn replace_host_header(
 }
 
 /// Host-Space: добавление пробела после `Host:`.
-fn apply_host_space(
-    packet: &mut [u8],
-    data_offset: usize,
-    payload: &[u8],
-) {
+fn apply_host_space(packet: &mut [u8], data_offset: usize, payload: &[u8]) {
     if let Some(pos) = find_header(payload, "Host:") {
         let colon_pos = data_offset + pos + 5; // "Host:".len()
         if colon_pos < packet.len() {
@@ -314,11 +315,7 @@ fn apply_host_space(
 }
 
 /// Title-Case: преобразование заголовков.
-fn apply_title_case(
-    packet: &mut [u8],
-    data_offset: usize,
-    payload: &[u8],
-) {
+fn apply_title_case(packet: &mut [u8], data_offset: usize, payload: &[u8]) {
     let mut i = 0;
     while i < payload.len() {
         // Находим начало заголовка (после \r\n или в начале payload)
@@ -356,11 +353,7 @@ fn apply_title_case(
 }
 
 /// Обфускация Host: замена hostname на 'a' · len.
-fn obfuscate_host(
-    packet: &mut [u8],
-    data_offset: usize,
-    payload: &[u8],
-) {
+fn obfuscate_host(packet: &mut [u8], data_offset: usize, payload: &[u8]) {
     if let Some(pos) = find_header(payload, "Host: ") {
         let header_start = data_offset + pos + 6;
         let line_end = find_line_end(payload, pos);
@@ -379,10 +372,7 @@ fn obfuscate_host(
 }
 
 /// Разделение HTTP заголовков на два TCP сегмента.
-fn header_split(
-    packet: &[u8],
-    _tcp_data_offset: usize,
-) -> DesyncResult {
+fn header_split(packet: &[u8], _tcp_data_offset: usize) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -406,8 +396,13 @@ fn header_split(
 
     // Фрагмент 1: метод + первый заголовок
     let frag1 = build_tcp_segment_http(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        seq, ack, window,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        seq,
+        ack,
+        window,
         &tcp.payload[..split_pos],
         ip.ttl.saturating_sub(1),
         ip.identification.wrapping_add(1),
@@ -415,23 +410,29 @@ fn header_split(
 
     // Фрагмент 2: остальные заголовки + body
     let frag2 = build_tcp_segment_http(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        seq.wrapping_add(split_pos as u32), ack, window,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        seq.wrapping_add(split_pos as u32),
+        ack,
+        window,
         &tcp.payload[split_pos..],
         ip.ttl,
         ip.identification.wrapping_add(2),
     );
 
-    debug!("[10] HeaderSplit: {} + {} bytes", split_pos, tcp.payload.len() - split_pos);
+    debug!(
+        "[10] HeaderSplit: {} + {} bytes",
+        split_pos,
+        tcp.payload.len() - split_pos
+    );
 
     DesyncResult::inject_many(vec![frag1, frag2])
 }
 
 /// Добавление мусорных HTTP заголовков перед реальными.
-fn header_junk(
-    packet: &[u8],
-    _tcp_data_offset: usize,
-) -> DesyncResult {
+fn header_junk(packet: &[u8], _tcp_data_offset: usize) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -466,8 +467,11 @@ fn header_junk(
     // Recalculate TCP checksum
     recalc_tcp_checksum(&mut modified, ip.header_len, ip.src, ip.dst);
 
-    debug!("[10] JunkHeader: {} bytes junk + {} bytes real",
-        junk_header.len(), tcp.payload.len());
+    debug!(
+        "[10] JunkHeader: {} bytes junk + {} bytes real",
+        junk_header.len(),
+        tcp.payload.len()
+    );
 
     DesyncResult::modified_only(modified)
 }
@@ -506,9 +510,12 @@ fn build_tcp_segment_http(
     let mut full_payload = tcp_buf.to_vec();
     full_payload.extend_from_slice(payload);
     crate::desync::build_ip_packet(
-        src_ip, dst_ip,
+        src_ip,
+        dst_ip,
         pnet_packet::ip::IpNextHeaderProtocols::Tcp,
-        ttl, identification, &full_payload,
+        ttl,
+        identification,
+        &full_payload,
     )
 }
 
@@ -571,7 +578,11 @@ fn recalc_tcp_checksum(packet: &mut [u8], tcp_offset: usize, src_ip: Ipv4Addr, d
             packet[tcp_offset + 16] = 0;
             packet[tcp_offset + 17] = 0;
         }
-        let checksum = crate::desync::tcp_checksum_v4(src_ip, dst_ip, &packet[tcp_offset..tcp_offset + tcp_len]);
+        let checksum = crate::desync::tcp_checksum_v4(
+            src_ip,
+            dst_ip,
+            &packet[tcp_offset..tcp_offset + tcp_len],
+        );
         if tcp_offset + 18 <= packet.len() {
             packet[tcp_offset + 16..tcp_offset + 18].copy_from_slice(&checksum.to_be_bytes());
         }
@@ -660,11 +671,7 @@ mod tests {
 /// Length (3 bytes) | Type = 0x04 (1 byte) | Flags (1 byte) | Stream ID (4 bytes)
 /// Setting: Identifier (2 bytes) + Value (4 bytes)
 /// ```
-pub fn h2_settings_flood(
-    packet: &[u8],
-    count: usize,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn h2_settings_flood(packet: &[u8], count: usize, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -686,9 +693,14 @@ pub fn h2_settings_flood(
     for i in 0..count {
         let settings_frame = build_h2_settings_frame(i);
         let seg = build_http_segment(
-            ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-            tcp.sequence, tcp.acknowledgment,
-            tcp.window, &settings_frame,
+            ip.src,
+            ip.dst,
+            tcp.src_port,
+            tcp.dst_port,
+            tcp.sequence,
+            tcp.acknowledgment,
+            tcp.window,
+            &settings_frame,
             fake_ttl,
             ip.identification.wrapping_add(i as u16 + 1),
         );
@@ -705,10 +717,7 @@ pub fn h2_settings_flood(
 /// ## Принцип
 /// Отправляем HTTP/2 RST_STREAM frame с padding перед реальными данными.
 /// DPI видит сброс потока и может перестать инспектировать.
-pub fn h2_rst_padding(
-    packet: &[u8],
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn h2_rst_padding(packet: &[u8], fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -735,9 +744,14 @@ pub fn h2_rst_padding(
     rst_frame.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // error_code=NO_ERROR
 
     let seg = build_http_segment(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        tcp.sequence, tcp.acknowledgment,
-        tcp.window, &rst_frame,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        tcp.sequence,
+        tcp.acknowledgment,
+        tcp.window,
+        &rst_frame,
         fake_ttl,
         ip.identification.wrapping_add(1),
     );
@@ -752,11 +766,7 @@ pub fn h2_rst_padding(
 /// ## Принцип
 /// Отправляем WINDOW_UPDATE frame'ы с большими значениями.
 /// DPI может потратить ресурсы на обновление window state.
-pub fn h2_window_update_flood(
-    packet: &[u8],
-    count: usize,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn h2_window_update_flood(packet: &[u8], count: usize, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -785,9 +795,14 @@ pub fn h2_window_update_flood(
         frame.extend_from_slice(&[0x00, 0x00, 0x7F, 0xFF]); // increment=32767
 
         let seg = build_http_segment(
-            ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-            tcp.sequence, tcp.acknowledgment,
-            tcp.window, &frame,
+            ip.src,
+            ip.dst,
+            tcp.src_port,
+            tcp.dst_port,
+            tcp.sequence,
+            tcp.acknowledgment,
+            tcp.window,
+            &frame,
             fake_ttl,
             ip.identification.wrapping_add(i as u16 + 1),
         );
@@ -804,10 +819,7 @@ pub fn h2_window_update_flood(
 /// ## Принцип
 /// Отправляем PRIORITY frame'ы для манипуляции приоритетами потоков.
 /// DPI может неправильно распарсить приоритеты и потерять sync.
-pub fn h2_priority_abuse(
-    packet: &[u8],
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn h2_priority_abuse(packet: &[u8], fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -835,9 +847,14 @@ pub fn h2_priority_abuse(
     frame.push(0xFF); // weight=255
 
     let seg = build_http_segment(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        tcp.sequence, tcp.acknowledgment,
-        tcp.window, &frame,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        tcp.sequence,
+        tcp.acknowledgment,
+        tcp.window,
+        &frame,
         fake_ttl,
         ip.identification.wrapping_add(1),
     );
@@ -852,11 +869,7 @@ pub fn h2_priority_abuse(
 /// ## Принцип
 /// Отправляем GOAWAY frame с Last-Stream-ID. DPI видит закрытие
 /// соединения и может перестать инспектировать последующие данные.
-pub fn h2_goaway_inject(
-    packet: &[u8],
-    last_stream_id: u32,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn h2_goaway_inject(packet: &[u8], last_stream_id: u32, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -881,7 +894,7 @@ pub fn h2_goaway_inject(
     frame.push(0x07); // type: GOAWAY
     frame.push(0x00); // flags
     frame.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // stream_id=0
-    // reserved + last_stream_id (4 bytes)
+                                                        // reserved + last_stream_id (4 bytes)
     frame.push(0x00); // reserved bit
     frame.push(((last_stream_id >> 24) & 0x7F) as u8);
     frame.push(((last_stream_id >> 16) & 0xFF) as u8);
@@ -890,9 +903,14 @@ pub fn h2_goaway_inject(
     frame.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // error_code=NO_ERROR
 
     let seg = build_http_segment(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        tcp.sequence, tcp.acknowledgment,
-        tcp.window, &frame,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        tcp.sequence,
+        tcp.acknowledgment,
+        tcp.window,
+        &frame,
         fake_ttl,
         ip.identification.wrapping_add(1),
     );
@@ -907,11 +925,7 @@ pub fn h2_goaway_inject(
 /// ## Принцип
 /// Разделяем HTTP chunked transfer на多个 TCP сегментов по границам
 /// chunk headers. DPI должен собрать chunk boundaries.
-pub fn chunk_obfuscation(
-    packet: &[u8],
-    split_count: usize,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn chunk_obfuscation(packet: &[u8], split_count: usize, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -942,10 +956,14 @@ pub fn chunk_obfuscation(
 
         let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
         let seg = build_http_segment(
-            ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+            ip.src,
+            ip.dst,
+            tcp.src_port,
+            tcp.dst_port,
             tcp.sequence.wrapping_add(start as u32),
             tcp.acknowledgment,
-            tcp.window, seg_payload,
+            tcp.window,
+            seg_payload,
             fake_ttl,
             ip.identification.wrapping_add(i as u16 + 1),
         );
@@ -955,7 +973,10 @@ pub fn chunk_obfuscation(
     // Последний сегмент — modified original
     let last_start = (split_count - 1) * seg_size;
     let modified = build_http_segment(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
         tcp.sequence.wrapping_add(last_start as u32),
         tcp.acknowledgment,
         tcp.window,
@@ -964,7 +985,10 @@ pub fn chunk_obfuscation(
         ip.identification.wrapping_add(split_count as u16),
     );
 
-    debug!("[B1] ChunkObfuscation: {} segments × {} bytes", split_count, seg_size);
+    debug!(
+        "[B1] ChunkObfuscation: {} segments × {} bytes",
+        split_count, seg_size
+    );
 
     DesyncResult {
         modified: Some(modified),
@@ -978,10 +1002,7 @@ pub fn chunk_obfuscation(
 /// ## Принцип
 /// Отправляем HPACK-encoded headers отдельными frame'ами в
 /// неожиданном порядке. DPI может не собрать заголовки.
-pub fn h2_frame_ordering(
-    packet: &[u8],
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn h2_frame_ordering(packet: &[u8], fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -1016,9 +1037,14 @@ pub fn h2_frame_ordering(
     headers_frame[2] = payload_len;
 
     let seg = build_http_segment(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        tcp.sequence, tcp.acknowledgment,
-        tcp.window, &headers_frame,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        tcp.sequence,
+        tcp.acknowledgment,
+        tcp.window,
+        &headers_frame,
         fake_ttl,
         ip.identification.wrapping_add(1),
     );
@@ -1073,11 +1099,7 @@ pub fn http_case_mix(packet: &[u8]) -> DesyncResult {
 /// ## Принцип
 /// Отправляем несколько HTTP запросов в одном TCP сегменте
 /// (pipelining). DPI может неправильно разбить pipeline.
-pub fn http11_pipeline(
-    packet: &[u8],
-    fake_host: &str,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn http11_pipeline(packet: &[u8], fake_host: &str, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -1107,7 +1129,10 @@ pub fn http11_pipeline(
     );
 
     let seg = build_http_segment(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
         tcp.sequence.wrapping_add(tcp.payload.len() as u32),
         tcp.acknowledgment,
         tcp.window,
@@ -1116,7 +1141,10 @@ pub fn http11_pipeline(
         ip.identification.wrapping_add(1),
     );
 
-    debug!("[NP7] Http11Pipeline: pipelined HEAD request to '{}'", fake_host);
+    debug!(
+        "[NP7] Http11Pipeline: pipelined HEAD request to '{}'",
+        fake_host
+    );
 
     DesyncResult::inject_only(seg)
 }
@@ -1126,10 +1154,7 @@ pub fn http11_pipeline(
 /// ## Принцип
 /// Добавляем fake Content-Length заголовок с неверным значением
 /// перед реальным. DPI может потерять sync по байтам.
-pub fn content_length_fuzz(
-    packet: &[u8],
-    fake_cl: usize,
-) -> DesyncResult {
+pub fn content_length_fuzz(packet: &[u8], fake_cl: usize) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -1162,10 +1187,7 @@ pub fn content_length_fuzz(
     let insert_offset = ip.header_len + tcp.data_offset + term_pos;
 
     if insert_offset <= modified.len() {
-        modified.splice(
-            insert_offset..insert_offset,
-            fake_cl_header.bytes(),
-        );
+        modified.splice(insert_offset..insert_offset, fake_cl_header.bytes());
 
         // Обновляем IP total length
         let new_total = modified.len() as u16;
@@ -1181,11 +1203,11 @@ pub fn content_length_fuzz(
             modified[tcp_start + 17] = 0;
         }
         let tcp_csum = crate::desync::tcp_checksum_v4(
-            ip.src, ip.dst,
+            ip.src,
+            ip.dst,
             &modified[tcp_start..tcp_start + tcp_len],
         );
-        modified[tcp_start + 16..tcp_start + 18]
-            .copy_from_slice(&tcp_csum.to_be_bytes());
+        modified[tcp_start + 16..tcp_start + 18].copy_from_slice(&tcp_csum.to_be_bytes());
     }
 
     debug!("[NP8] ContentLengthFuzz: fake CL={}", fake_cl);
@@ -1198,9 +1220,7 @@ pub fn content_length_fuzz(
 /// ## Принцип
 /// Добавляем Upgrade: h2c заголовок. DPI может переключиться
 /// на HTTP/2 парсинг и потерять sync с HTTP/1.1 потоком.
-pub fn http_upgrade_abuse(
-    packet: &[u8],
-) -> DesyncResult {
+pub fn http_upgrade_abuse(packet: &[u8]) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -1229,10 +1249,7 @@ pub fn http_upgrade_abuse(
     let insert_offset = ip.header_len + tcp.data_offset + term_pos;
 
     if insert_offset <= modified.len() {
-        modified.splice(
-            insert_offset..insert_offset,
-            upgrade_header.iter().copied(),
-        );
+        modified.splice(insert_offset..insert_offset, upgrade_header.iter().copied());
 
         let new_total = modified.len() as u16;
         modified[2..4].copy_from_slice(&new_total.to_be_bytes());
@@ -1246,11 +1263,11 @@ pub fn http_upgrade_abuse(
             modified[tcp_start + 17] = 0;
         }
         let tcp_csum = crate::desync::tcp_checksum_v4(
-            ip.src, ip.dst,
+            ip.src,
+            ip.dst,
             &modified[tcp_start..tcp_start + tcp_len],
         );
-        modified[tcp_start + 16..tcp_start + 18]
-            .copy_from_slice(&tcp_csum.to_be_bytes());
+        modified[tcp_start + 16..tcp_start + 18].copy_from_slice(&tcp_csum.to_be_bytes());
     }
 
     debug!("[NP9] HttpUpgrade: Upgrade: h2c injected");
@@ -1276,9 +1293,7 @@ fn build_h2_settings_frame(index: usize) -> bytes::Bytes {
 
     // Setting: HEADER_TABLE_SIZE = 4096 (0x01)
     frame.extend_from_slice(&[0x00, 0x01]); // identifier
-    frame.extend_from_slice(&[
-        0x00, 0x00, 0x10, 0x00,
-    ]);
+    frame.extend_from_slice(&[0x00, 0x00, 0x10, 0x00]);
 
     bytes::Bytes::from(frame)
 }
@@ -1330,9 +1345,12 @@ fn build_http_segment(
     let mut full_payload = tcp_buf.to_vec();
     full_payload.extend_from_slice(payload);
     crate::desync::build_ip_packet(
-        src_ip, dst_ip,
+        src_ip,
+        dst_ip,
         pnet_packet::ip::IpNextHeaderProtocols::Tcp,
-        ttl, identification, &full_payload,
+        ttl,
+        identification,
+        &full_payload,
     )
 }
 
@@ -1459,9 +1477,14 @@ mod p4_tests {
         let seg = build_http_segment(
             Ipv4Addr::new(192, 168, 1, 1),
             Ipv4Addr::new(8, 8, 8, 8),
-            12345, 443, 1000, 2000,
-            65535, b"test",
-            64, 1,
+            12345,
+            443,
+            1000,
+            2000,
+            65535,
+            b"test",
+            64,
+            1,
         );
         assert!(seg.len() > 40);
         assert_eq!(seg[0] >> 4, 4);

@@ -17,7 +17,12 @@ pub struct ConnKey {
 
 impl ConnKey {
     pub fn new(src_ip: Ipv4Addr, dst_ip: Ipv4Addr, src_port: u16, dst_port: u16) -> Self {
-        Self { src_ip, dst_ip, src_port, dst_port }
+        Self {
+            src_ip,
+            dst_ip,
+            src_port,
+            dst_port,
+        }
     }
 }
 
@@ -88,11 +93,17 @@ impl Conntrack {
         }
     }
 
-    pub fn get(&self, key: &ConnKey) -> Option<dashmap::mapref::one::Ref<'_, ConnKey, ConntrackEntry>> {
+    pub fn get(
+        &self,
+        key: &ConnKey,
+    ) -> Option<dashmap::mapref::one::Ref<'_, ConnKey, ConntrackEntry>> {
         self.inner.map.get(key)
     }
 
-    pub fn get_mut(&self, key: &ConnKey) -> Option<dashmap::mapref::one::RefMut<'_, ConnKey, ConntrackEntry>> {
+    pub fn get_mut(
+        &self,
+        key: &ConnKey,
+    ) -> Option<dashmap::mapref::one::RefMut<'_, ConnKey, ConntrackEntry>> {
         self.inner.map.get_mut(key)
     }
 
@@ -147,7 +158,10 @@ impl Conntrack {
     /// Быстрый GC — two-phase: collect then remove (без deadlock).
     pub fn gc_fast(&self, max_idle: Duration) {
         let now = Instant::now();
-        let to_remove: Vec<ConnKey> = self.inner.map.iter()
+        let to_remove: Vec<ConnKey> = self
+            .inner
+            .map
+            .iter()
             .filter(|r| now.duration_since(r.value().last_activity) > max_idle)
             .map(|r| *r.key())
             .collect();
@@ -156,7 +170,9 @@ impl Conntrack {
             self.inner.map.remove(&key);
         }
         if removed > 0 {
-            self.inner.active_count.fetch_sub(removed, Ordering::Relaxed);
+            self.inner
+                .active_count
+                .fetch_sub(removed, Ordering::Relaxed);
             debug!("Conntrack GC fast: removed {} stale entries", removed);
         }
     }
@@ -178,7 +194,8 @@ impl Conntrack {
     }
 
     pub fn snapshot(&self) -> Vec<(ConnKey, ConntrackEntry)> {
-        self.inner.map
+        self.inner
+            .map
             .iter()
             .map(|r| (*r.key(), r.value().clone()))
             .collect()
@@ -198,15 +215,29 @@ mod tests {
     use std::time::Instant;
 
     fn test_key() -> ConnKey {
-        ConnKey::new(Ipv4Addr::new(192, 168, 1, 1), Ipv4Addr::new(10, 0, 0, 1), 54321, 443)
+        ConnKey::new(
+            Ipv4Addr::new(192, 168, 1, 1),
+            Ipv4Addr::new(10, 0, 0, 1),
+            54321,
+            443,
+        )
     }
 
     fn test_entry() -> ConntrackEntry {
         ConntrackEntry {
-            client_isn: 1000, server_isn: 2000, client_seq: 1001, server_seq: 2001,
-            client_ack: 2001, server_ack: 1001, rtt_us: 50000,
-            state: ConnState::Established, desync_applied: true, strategy_id: 42,
-            last_activity: Instant::now(), dup_ack_count: 0, rng: None,
+            client_isn: 1000,
+            server_isn: 2000,
+            client_seq: 1001,
+            server_seq: 2001,
+            client_ack: 2001,
+            server_ack: 1001,
+            rtt_us: 50000,
+            state: ConnState::Established,
+            desync_applied: true,
+            strategy_id: 42,
+            last_activity: Instant::now(),
+            dup_ack_count: 0,
+            rng: None,
         }
     }
 

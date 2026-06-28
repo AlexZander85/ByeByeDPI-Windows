@@ -93,9 +93,11 @@ pub fn is_injected_packet(packet: &[u8]) -> bool {
 pub fn injected_filter_clause() -> String {
     let t = tag();
     let hex_bytes: Vec<String> = t.iter().map(|b| format!("{:#04x}", b)).collect();
-    format!("not (tcp.PayloadLength >= {} and tcp.Payload[0:16] == {})",
-            UUID_SIZE,
-            hex_bytes.join(" "))
+    format!(
+        "not (tcp.PayloadLength >= {} and tcp.Payload[0:16] == {})",
+        UUID_SIZE,
+        hex_bytes.join(" ")
+    )
 }
 
 pub fn reset_injection_tag() {

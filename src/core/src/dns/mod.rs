@@ -14,8 +14,8 @@
 //! и [sing-box](https://github.com/SagerNet/sing-box).
 
 pub mod fakeip;
-pub mod txid_tracker;
 pub mod parallel_dial;
+pub mod txid_tracker;
 
 use moka::future::Cache;
 use std::net::IpAddr;
@@ -114,9 +114,20 @@ impl DnsEngine {
 
             if let Some(ip) = result {
                 let final_ip = self.apply_overrides(ip);
-                debug!("DNS resolved: {} → {} (attempt {})", domain, final_ip, retry + 1);
+                debug!(
+                    "DNS resolved: {} → {} (attempt {})",
+                    domain,
+                    final_ip,
+                    retry + 1
+                );
                 self.cache
-                    .insert(domain.to_string(), DnsResult { ip: final_ip, ttl: 300 })
+                    .insert(
+                        domain.to_string(),
+                        DnsResult {
+                            ip: final_ip,
+                            ttl: 300,
+                        },
+                    )
                     .await;
                 return Some(final_ip);
             }

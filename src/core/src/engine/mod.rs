@@ -11,10 +11,10 @@
 //! 8. Inject fake пакет, forward оригинал
 
 use crate::adaptive::hop_tab::HopTab;
-use crate::classifier::{ClassifiedPacket, Classification, Classifier};
+use crate::classifier::{Classification, ClassifiedPacket, Classifier};
 use crate::conntrack::Conntrack;
-use crate::desync::{DesyncConfig, DesyncTechnique};
 use crate::desync::group::DesyncGroup;
+use crate::desync::{DesyncConfig, DesyncTechnique};
 use crate::dns::fakeip::FakeIpManager;
 use crate::infra::event_tag;
 use crate::packet_engine::PacketEngine;
@@ -111,7 +111,11 @@ struct InjectedSeqTracker {
 
 impl InjectedSeqTracker {
     fn new(max_entries: usize, ttl: Duration) -> Self {
-        Self { map: std::collections::HashMap::with_capacity(max_entries), ttl, max_entries }
+        Self {
+            map: std::collections::HashMap::with_capacity(max_entries),
+            ttl,
+            max_entries,
+        }
     }
 
     fn insert(&mut self, seq: u32) {
@@ -123,7 +127,10 @@ impl InjectedSeqTracker {
     }
 
     fn contains(&self, seq: u32) -> bool {
-        self.map.get(&seq).map(|t| t.elapsed() < self.ttl).unwrap_or(false)
+        self.map
+            .get(&seq)
+            .map(|t| t.elapsed() < self.ttl)
+            .unwrap_or(false)
     }
 }
 
@@ -160,7 +167,10 @@ impl ProcessingPipeline {
             desync_group,
             config,
             stats: Arc::new(ProcessingStats::new()),
-            injected_seqs: std::sync::Mutex::new(InjectedSeqTracker::new(65536, Duration::from_secs(30))),
+            injected_seqs: std::sync::Mutex::new(InjectedSeqTracker::new(
+                65536,
+                Duration::from_secs(30),
+            )),
         })
     }
 
@@ -177,7 +187,10 @@ impl ProcessingPipeline {
             desync_group,
             config,
             stats: Arc::new(ProcessingStats::new()),
-            injected_seqs: std::sync::Mutex::new(InjectedSeqTracker::new(65536, Duration::from_secs(30))),
+            injected_seqs: std::sync::Mutex::new(InjectedSeqTracker::new(
+                65536,
+                Duration::from_secs(30),
+            )),
         }
     }
 
@@ -199,7 +212,9 @@ impl ProcessingPipeline {
         debug!("ProcessingPipeline started");
 
         const QUEUE_SIZE: usize = 65536;
-        let ring = std::sync::Arc::new(crossbeam::queue::ArrayQueue::<CapturedPacket>::new(QUEUE_SIZE));
+        let ring = std::sync::Arc::new(crossbeam::queue::ArrayQueue::<CapturedPacket>::new(
+            QUEUE_SIZE,
+        ));
         let ring_tx = ring.clone();
         let ring_rx = ring.clone();
 
@@ -245,7 +260,10 @@ impl ProcessingPipeline {
                     }
                     self.stats.forwarded.fetch_add(1, Ordering::Relaxed);
                 }
-                Ok(PacketDecision::Desync { inject, inject_protocol }) => {
+                Ok(PacketDecision::Desync {
+                    inject,
+                    inject_protocol,
+                }) => {
                     for inject_pkt in &inject {
                         match inject_protocol {
                             InjectProtocol::Tcp => {
@@ -253,7 +271,10 @@ impl ProcessingPipeline {
                                 if self.config.event_tag_enabled {
                                     event_tag::tag_injected_packet(&mut tagged);
                                 }
-                                if let Err(e) = self.packet_engine.inject_via_divert(&tagged, &captured.addr) {
+                                if let Err(e) = self
+                                    .packet_engine
+                                    .inject_via_divert(&tagged, &captured.addr)
+                                {
                                     warn!("Failed to inject TCP desync packet: {}", e);
                                 }
                             }
@@ -284,7 +305,10 @@ impl ProcessingPipeline {
     }
 
     async fn forward_packet(&self, captured: &CapturedPacket) {
-        if let Err(e) = self.packet_engine.send_blocking(&captured.data, &captured.addr) {
+        if let Err(e) = self
+            .packet_engine
+            .send_blocking(&captured.data, &captured.addr)
+        {
             error!("Failed to forward packet: {}", e);
             self.stats.errors.fetch_add(1, Ordering::Relaxed);
         } else {
@@ -292,7 +316,10 @@ impl ProcessingPipeline {
         }
     }
 
-    async fn process_one(&self, captured: &CapturedPacket) -> Result<PacketDecision, anyhow::Error> {
+    async fn process_one(
+        &self,
+        captured: &CapturedPacket,
+    ) -> Result<PacketDecision, anyhow::Error> {
         let classification = Classifier::classify(&captured.data);
 
         match classification {
@@ -300,7 +327,8 @@ impl ProcessingPipeline {
                 if self.config.only_outbound && !is_outbound(&cp.src_ip) {
                     return Ok(PacketDecision::Forward);
                 }
-                self.process_outbound_tls(&cp, &captured.data, &captured.addr).await
+                self.process_outbound_tls(&cp, &captured.data, &captured.addr)
+                    .await
             }
             Classification::Quic(cp) => {
                 if self.config.only_outbound && !is_outbound(&cp.src_ip) {
@@ -320,33 +348,47 @@ impl ProcessingPipeline {
     }
 
     async fn process_quic(
-        &self, _cp: &ClassifiedPacket, original_packet: &[u8],
+        &self,
+        _cp: &ClassifiedPacket,
+        original_packet: &[u8],
     ) -> Result<PacketDecision, anyhow::Error> {
         let packet = bytes::Bytes::copy_from_slice(original_packet);
         let result = self.apply_desync_async(packet).await;
         if result.inject.is_empty() && result.modified.is_none() && !result.drop {
             return Ok(PacketDecision::Forward);
         }
-        if result.drop { return Ok(PacketDecision::Drop); }
+        if result.drop {
+            return Ok(PacketDecision::Drop);
+        }
         if let Some(modified) = result.modified {
             return Ok(PacketDecision::Modify(modified));
         }
-        Ok(PacketDecision::Desync { inject: result.inject, inject_protocol: InjectProtocol::Udp })
+        Ok(PacketDecision::Desync {
+            inject: result.inject,
+            inject_protocol: InjectProtocol::Udp,
+        })
     }
 
     async fn process_http(
-        &self, _cp: &ClassifiedPacket, original_packet: &[u8],
+        &self,
+        _cp: &ClassifiedPacket,
+        original_packet: &[u8],
     ) -> Result<PacketDecision, anyhow::Error> {
         let packet = bytes::Bytes::copy_from_slice(original_packet);
         let result = self.apply_desync_async(packet).await;
         if result.inject.is_empty() && result.modified.is_none() && !result.drop {
             return Ok(PacketDecision::Forward);
         }
-        if result.drop { return Ok(PacketDecision::Drop); }
+        if result.drop {
+            return Ok(PacketDecision::Drop);
+        }
         if let Some(modified) = result.modified {
             return Ok(PacketDecision::Modify(modified));
         }
-        Ok(PacketDecision::Desync { inject: result.inject, inject_protocol: InjectProtocol::Tcp })
+        Ok(PacketDecision::Desync {
+            inject: result.inject,
+            inject_protocol: InjectProtocol::Tcp,
+        })
     }
 
     async fn process_outbound_tls(
@@ -362,7 +404,12 @@ impl ProcessingPipeline {
             if let Some(ip) = crate::desync::parse_ip_header(original_packet) {
                 let tcp_data = &original_packet[ip.header_len..];
                 if let Some(tcp) = pnet_packet::tcp::TcpPacket::new(tcp_data) {
-                    if self.injected_seqs.lock().unwrap().contains(tcp.get_sequence()) {
+                    if self
+                        .injected_seqs
+                        .lock()
+                        .unwrap()
+                        .contains(tcp.get_sequence())
+                    {
                         return Ok(PacketDecision::Forward);
                     }
                 }
@@ -386,23 +433,34 @@ impl ProcessingPipeline {
         // 3. HopTab observation
         if self.config.hop_tab_enabled {
             if let Some(ip_packet) = Ipv4Packet::new(original_packet) {
-                self.hop_tab.observe(HopTab::ip_to_u32(&cp.dst_ip), ip_packet.get_ttl());
+                self.hop_tab
+                    .observe(HopTab::ip_to_u32(&cp.dst_ip), ip_packet.get_ttl());
             }
         }
 
         // 4. Conntrack — create or update (не перезаписываем существующий)
         {
-            use crate::conntrack::{ConnKey, ConntrackEntry, ConnState};
+            use crate::conntrack::{ConnKey, ConnState, ConntrackEntry};
 
             let key = ConnKey::new(cp.src_ip, cp.dst_ip, cp.src_port, cp.dst_port);
 
             if self.conntrack.get(&key).is_none() {
                 let entry = ConntrackEntry {
-                    client_isn: 0, server_isn: 0, client_seq: 0, server_seq: 0,
-                    client_ack: 0, server_ack: 0, rtt_us: 0,
-                    state: ConnState::SynSent, desync_applied: false, strategy_id: 0,
-                    last_activity: Instant::now(), dup_ack_count: 0,
-                    rng: Some(crate::desync::rand::PerConnRng::new(cp.dst_ip.to_bits() as u64)),
+                    client_isn: 0,
+                    server_isn: 0,
+                    client_seq: 0,
+                    server_seq: 0,
+                    client_ack: 0,
+                    server_ack: 0,
+                    rtt_us: 0,
+                    state: ConnState::SynSent,
+                    desync_applied: false,
+                    strategy_id: 0,
+                    last_activity: Instant::now(),
+                    dup_ack_count: 0,
+                    rng: Some(crate::desync::rand::PerConnRng::new(
+                        cp.dst_ip.to_bits() as u64
+                    )),
                 };
                 self.conntrack.insert(key, entry);
             } else {
@@ -421,7 +479,10 @@ impl ProcessingPipeline {
             if let Some(ip) = crate::desync::parse_ip_header(original_packet) {
                 let tcp_data = &original_packet[ip.header_len..];
                 if let Some(tcp) = pnet_packet::tcp::TcpPacket::new(tcp_data) {
-                    self.injected_seqs.lock().unwrap().insert(tcp.get_sequence());
+                    self.injected_seqs
+                        .lock()
+                        .unwrap()
+                        .insert(tcp.get_sequence());
                 }
             }
         }
@@ -429,7 +490,9 @@ impl ProcessingPipeline {
         if result.inject.is_empty() && result.modified.is_none() && !result.drop {
             return Ok(PacketDecision::Forward);
         }
-        if result.drop { return Ok(PacketDecision::Drop); }
+        if result.drop {
+            return Ok(PacketDecision::Drop);
+        }
 
         if let Some(modified) = result.modified {
             if result.inject.is_empty() {
@@ -441,21 +504,31 @@ impl ProcessingPipeline {
             return Ok(PacketDecision::Modify(modified));
         }
 
-        Ok(PacketDecision::Desync { inject: result.inject, inject_protocol: InjectProtocol::Tcp })
+        Ok(PacketDecision::Desync {
+            inject: result.inject,
+            inject_protocol: InjectProtocol::Tcp,
+        })
     }
 
-    fn inject_tcp_packet(&self, packet: &[u8], addr: &windivert::prelude::WinDivertAddress<windivert::prelude::NetworkLayer>) -> Result<(), anyhow::Error> {
+    fn inject_tcp_packet(
+        &self,
+        packet: &[u8],
+        addr: &windivert::prelude::WinDivertAddress<windivert::prelude::NetworkLayer>,
+    ) -> Result<(), anyhow::Error> {
         let mut tagged = packet.to_vec();
         if self.config.event_tag_enabled {
             event_tag::tag_injected_packet(&mut tagged);
         }
-        self.packet_engine.inject_via_divert(&tagged, addr)
+        self.packet_engine
+            .inject_via_divert(&tagged, addr)
             .map_err(|e| anyhow::anyhow!("WinDivert inject failed: {}", e))?;
         self.stats.fake_ch_injected.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
-    pub fn has_divert(&self) -> bool { self.packet_engine.has_divert() }
+    pub fn has_divert(&self) -> bool {
+        self.packet_engine.has_divert()
+    }
 
     async fn apply_desync_async(&self, packet: bytes::Bytes) -> crate::desync::DesyncResult {
         let group = self.desync_group.clone();
@@ -467,10 +540,18 @@ impl ProcessingPipeline {
             })
     }
 
-    pub fn stats(&self) -> &ProcessingStats { &self.stats }
-    pub fn stats_arc(&self) -> Arc<ProcessingStats> { self.stats.clone() }
-    pub fn packet_engine(&self) -> &PacketEngine { &self.packet_engine }
-    pub fn config(&self) -> &ProcessingConfig { &self.config }
+    pub fn stats(&self) -> &ProcessingStats {
+        &self.stats
+    }
+    pub fn stats_arc(&self) -> Arc<ProcessingStats> {
+        self.stats.clone()
+    }
+    pub fn packet_engine(&self) -> &PacketEngine {
+        &self.packet_engine
+    }
+    pub fn config(&self) -> &ProcessingConfig {
+        &self.config
+    }
 }
 
 struct CapturedPacket {
@@ -492,5 +573,7 @@ fn is_outbound(src_ip: &Ipv4Addr) -> bool {
 }
 
 impl Default for ProcessingPipeline {
-    fn default() -> Self { Self::new_api_only(ProcessingConfig::default()) }
+    fn default() -> Self {
+        Self::new_api_only(ProcessingConfig::default())
+    }
 }

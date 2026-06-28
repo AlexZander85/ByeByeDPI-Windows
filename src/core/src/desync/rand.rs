@@ -25,8 +25,13 @@ fn init_seed() -> u64 {
     let mut buf = [0u8; 8];
     let _ = getrandom::getrandom(&mut buf);
     let new_seed = u64::from_le_bytes(buf);
-    let new_seed = if new_seed == 0 { 0xDEAD_BEEF_CAFE_BABE } else { new_seed };
-    GLOBAL_SEED.compare_exchange(0, new_seed, Ordering::SeqCst, Ordering::Relaxed)
+    let new_seed = if new_seed == 0 {
+        0xDEAD_BEEF_CAFE_BABE
+    } else {
+        new_seed
+    };
+    GLOBAL_SEED
+        .compare_exchange(0, new_seed, Ordering::SeqCst, Ordering::Relaxed)
         .unwrap_or(new_seed)
 }
 
@@ -51,7 +56,9 @@ pub struct PerConnRng {
 
 impl std::fmt::Debug for PerConnRng {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PerConnRng").field("counter", &self.counter).finish()
+        f.debug_struct("PerConnRng")
+            .field("counter", &self.counter)
+            .finish()
     }
 }
 
@@ -93,14 +100,18 @@ impl PerConnRng {
 
     /// Случайное число в диапазоне [0, range) без bias (Lemire's method).
     pub fn next_unbiased(&mut self, range: u64) -> u64 {
-        if range == 0 { return 0; }
+        if range == 0 {
+            return 0;
+        }
         let m = (self.next_u64() as u128).wrapping_mul(range as u128);
         (m >> 64) as u64
     }
 
     /// Случайное число в диапазоне [min, max] без bias.
     pub fn next_range(&mut self, min: u64, max: u64) -> u64 {
-        if min >= max { return min; }
+        if min >= max {
+            return min;
+        }
         let range = max - min + 1;
         min + self.next_unbiased(range)
     }
@@ -112,8 +123,12 @@ impl PerConnRng {
         let new_s1 = u64::from_le_bytes(fresh[8..].try_into().unwrap());
         self.state[0] ^= new_s0;
         self.state[1] ^= new_s1;
-        if self.state[0] == 0 { self.state[0] = 0xDEADBEEFCAFEF00D; }
-        if self.state[1] == 0 { self.state[1] = 0x0123456789ABCDEF; }
+        if self.state[0] == 0 {
+            self.state[0] = 0xDEADBEEFCAFEF00D;
+        }
+        if self.state[1] == 0 {
+            self.state[1] = 0x0123456789ABCDEF;
+        }
     }
 }
 
@@ -124,7 +139,9 @@ pub fn random_u64() -> u64 {
     }
     STATE.with(|state| {
         let mut x = state.get();
-        if x == 0 { x = init_seed(); }
+        if x == 0 {
+            x = init_seed();
+        }
         x ^= x << 13;
         x ^= x >> 7;
         x ^= x << 17;
@@ -133,7 +150,9 @@ pub fn random_u64() -> u64 {
     })
 }
 
-pub fn random_u32() -> u32 { (random_u64() >> 32) as u32 }
+pub fn random_u32() -> u32 {
+    (random_u64() >> 32) as u32
+}
 
 /// Генерирует случайное число в диапазоне [min, max].
 pub fn random_range(min: u32, max: u32) -> u32 {

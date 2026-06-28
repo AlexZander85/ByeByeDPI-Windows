@@ -21,17 +21,17 @@
 //! - [dpibreak](https://github.com/hufrea/dpibreak) — W series
 //! - [sni-spoofing-rust](https://github.com/HirbodBehnam/sni-spoofing-rust) — SEQ Spoof
 
-pub mod tcp;
-pub mod ip;
-pub mod tls;
+pub mod crypto;
 pub mod group;
 pub mod http;
+pub mod ip;
+pub mod obfs;
+pub mod pool;
 pub mod quic;
 pub mod rand;
-pub mod obfs;
-pub mod crypto;
 pub mod segment_plan;
-pub mod pool;
+pub mod tcp;
+pub mod tls;
 
 use pnet_packet::ip::IpNextHeaderProtocol;
 use pnet_packet::ipv4::MutableIpv4Packet;
@@ -57,27 +57,54 @@ pub struct DesyncResult {
 
 impl DesyncResult {
     pub fn passthrough() -> Self {
-        Self { modified: None, inject: Vec::new(), drop: false }
+        Self {
+            modified: None,
+            inject: Vec::new(),
+            drop: false,
+        }
     }
 
     pub fn modified_only(modified: impl Into<bytes::Bytes>) -> Self {
-        Self { modified: Some(modified.into()), inject: Vec::new(), drop: false }
+        Self {
+            modified: Some(modified.into()),
+            inject: Vec::new(),
+            drop: false,
+        }
     }
 
     pub fn inject_only(inject: impl Into<bytes::Bytes>) -> Self {
-        Self { modified: None, inject: vec![inject.into()], drop: false }
+        Self {
+            modified: None,
+            inject: vec![inject.into()],
+            drop: false,
+        }
     }
 
-    pub fn modify_and_inject(modified: impl Into<bytes::Bytes>, inject: impl Into<bytes::Bytes>) -> Self {
-        Self { modified: Some(modified.into()), inject: vec![inject.into()], drop: false }
+    pub fn modify_and_inject(
+        modified: impl Into<bytes::Bytes>,
+        inject: impl Into<bytes::Bytes>,
+    ) -> Self {
+        Self {
+            modified: Some(modified.into()),
+            inject: vec![inject.into()],
+            drop: false,
+        }
     }
 
     pub fn inject_many(inject: Vec<bytes::Bytes>) -> Self {
-        Self { modified: None, inject, drop: false }
+        Self {
+            modified: None,
+            inject,
+            drop: false,
+        }
     }
 
     pub fn drop_packet() -> Self {
-        Self { modified: None, inject: Vec::new(), drop: true }
+        Self {
+            modified: None,
+            inject: Vec::new(),
+            drop: true,
+        }
     }
 
     /// Объединяет два результата с detection конфликтов.
@@ -109,29 +136,77 @@ impl DesyncResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DesyncTechnique {
     // === TCP (P0-P3) ===
-    MultiSplit, MultiDisorder, HostFakeSplit, FakeDataSplit,
-    FakeDataDisorder, TcpSeg, SynData, SynAckSplit, WinSize,
-    SynHide, FakeSni, OobInjection,
+    MultiSplit,
+    MultiDisorder,
+    HostFakeSplit,
+    FakeDataSplit,
+    FakeDataDisorder,
+    TcpSeg,
+    SynData,
+    SynAckSplit,
+    WinSize,
+    SynHide,
+    FakeSni,
+    OobInjection,
     // === P3 TCP ===
-    TcpPreopen, MssClamp, AckSuppress, PktReorder, RstSelective,
-    SynFloodDecoy, WinScaleManip, Disorder, MultidisorderNew,
-    Disoob, HostFake, FakeRst, ByteByByte, UnidirFrag,
-    PortShuffle, Wclamp, TsMd5,
+    TcpPreopen,
+    MssClamp,
+    AckSuppress,
+    PktReorder,
+    RstSelective,
+    SynFloodDecoy,
+    WinScaleManip,
+    Disorder,
+    MultidisorderNew,
+    Disoob,
+    HostFake,
+    FakeRst,
+    ByteByByte,
+    UnidirFrag,
+    PortShuffle,
+    Wclamp,
+    TsMd5,
     // === IP ===
-    FragOverlap, BadChecksum, TtlManipulation, IpFragPrimitives,
-    RstDropIpId, TtlJitter, DscpRandom, MutualSpoof,
+    FragOverlap,
+    BadChecksum,
+    TtlManipulation,
+    IpFragPrimitives,
+    RstDropIpId,
+    TtlJitter,
+    DscpRandom,
+    MutualSpoof,
     // === TLS ===
-    TlsRecordFrag, TlsRecordPad, SniMasking, SniMicrofrag,
-    TlsRecordRewrap, TlsVersionSpoof, SniRecordFrag,
+    TlsRecordFrag,
+    TlsRecordPad,
+    SniMasking,
+    SniMicrofrag,
+    TlsRecordRewrap,
+    TlsVersionSpoof,
+    SniRecordFrag,
     // === HTTP (P4) ===
-    H2SettingsFlood, H2RstPadding, H2WindowUpdateFlood,
-    H2PriorityAbuse, H2Goaway, ChunkObfuscation, H2FrameOrdering,
-    Http11Pipeline, ContentLengthFuzz, HttpUpgradeAbuse, HttpCaseMix,
+    H2SettingsFlood,
+    H2RstPadding,
+    H2WindowUpdateFlood,
+    H2PriorityAbuse,
+    H2Goaway,
+    ChunkObfuscation,
+    H2FrameOrdering,
+    Http11Pipeline,
+    ContentLengthFuzz,
+    HttpUpgradeAbuse,
+    HttpCaseMix,
     // === QUIC (P5) ===
-    QuicBlocking, QuicVersionDowngrade, QuicRetryInject,
-    QuicConnectionClose, QuicStreamReset, QuicMaxStreams,
+    QuicBlocking,
+    QuicVersionDowngrade,
+    QuicRetryInject,
+    QuicConnectionClose,
+    QuicStreamReset,
+    QuicMaxStreams,
     // === Obfs/Crypto (P6) ===
-    Udp2Icmp, XorFirst, WgObfs, ChaCha20,
+    Udp2Icmp,
+    XorFirst,
+    WgObfs,
+    ChaCha20,
     // === Composite ===
     ReverseFragmentOrder,
 }
@@ -139,108 +214,211 @@ pub enum DesyncTechnique {
 impl DesyncTechnique {
     pub fn name(&self) -> &'static str {
         match self {
-            Self::MultiSplit => "MultiSplit", Self::MultiDisorder => "MultiDisorder",
-            Self::HostFakeSplit => "HostFakeSplit", Self::FakeDataSplit => "FakeDataSplit",
-            Self::FakeDataDisorder => "FakeDataDisorder", Self::TcpSeg => "TcpSeg",
-            Self::SynData => "SynData", Self::SynAckSplit => "SynAckSplit",
-            Self::WinSize => "WinSize", Self::SynHide => "SynHide",
-            Self::FakeSni => "FakeSni", Self::OobInjection => "OobInjection",
-            Self::TcpPreopen => "TcpPreopen", Self::MssClamp => "MssClamp",
-            Self::AckSuppress => "AckSuppress", Self::PktReorder => "PktReorder",
-            Self::RstSelective => "RstSelective", Self::SynFloodDecoy => "SynFloodDecoy",
-            Self::WinScaleManip => "WinScaleManip", Self::Disorder => "Disorder",
-            Self::MultidisorderNew => "MultidisorderNew", Self::Disoob => "Disoob",
-            Self::HostFake => "HostFake", Self::FakeRst => "FakeRst",
-            Self::ByteByByte => "ByteByByte", Self::UnidirFrag => "UnidirFrag",
-            Self::PortShuffle => "PortShuffle", Self::Wclamp => "Wclamp",
+            Self::MultiSplit => "MultiSplit",
+            Self::MultiDisorder => "MultiDisorder",
+            Self::HostFakeSplit => "HostFakeSplit",
+            Self::FakeDataSplit => "FakeDataSplit",
+            Self::FakeDataDisorder => "FakeDataDisorder",
+            Self::TcpSeg => "TcpSeg",
+            Self::SynData => "SynData",
+            Self::SynAckSplit => "SynAckSplit",
+            Self::WinSize => "WinSize",
+            Self::SynHide => "SynHide",
+            Self::FakeSni => "FakeSni",
+            Self::OobInjection => "OobInjection",
+            Self::TcpPreopen => "TcpPreopen",
+            Self::MssClamp => "MssClamp",
+            Self::AckSuppress => "AckSuppress",
+            Self::PktReorder => "PktReorder",
+            Self::RstSelective => "RstSelective",
+            Self::SynFloodDecoy => "SynFloodDecoy",
+            Self::WinScaleManip => "WinScaleManip",
+            Self::Disorder => "Disorder",
+            Self::MultidisorderNew => "MultidisorderNew",
+            Self::Disoob => "Disoob",
+            Self::HostFake => "HostFake",
+            Self::FakeRst => "FakeRst",
+            Self::ByteByByte => "ByteByByte",
+            Self::UnidirFrag => "UnidirFrag",
+            Self::PortShuffle => "PortShuffle",
+            Self::Wclamp => "Wclamp",
             Self::TsMd5 => "TsMd5",
-            Self::FragOverlap => "FragOverlap", Self::BadChecksum => "BadChecksum",
-            Self::TtlManipulation => "TtlManipulation", Self::IpFragPrimitives => "IpFragPrimitives",
-            Self::RstDropIpId => "RstDropIpId", Self::TtlJitter => "TtlJitter",
-            Self::DscpRandom => "DscpRandom", Self::MutualSpoof => "MutualSpoof",
-            Self::TlsRecordFrag => "TlsRecordFrag", Self::TlsRecordPad => "TlsRecordPad",
-            Self::SniMasking => "SniMasking", Self::SniMicrofrag => "SniMicrofrag",
-            Self::TlsRecordRewrap => "TlsRecordRewrap", Self::TlsVersionSpoof => "TlsVersionSpoof",
+            Self::FragOverlap => "FragOverlap",
+            Self::BadChecksum => "BadChecksum",
+            Self::TtlManipulation => "TtlManipulation",
+            Self::IpFragPrimitives => "IpFragPrimitives",
+            Self::RstDropIpId => "RstDropIpId",
+            Self::TtlJitter => "TtlJitter",
+            Self::DscpRandom => "DscpRandom",
+            Self::MutualSpoof => "MutualSpoof",
+            Self::TlsRecordFrag => "TlsRecordFrag",
+            Self::TlsRecordPad => "TlsRecordPad",
+            Self::SniMasking => "SniMasking",
+            Self::SniMicrofrag => "SniMicrofrag",
+            Self::TlsRecordRewrap => "TlsRecordRewrap",
+            Self::TlsVersionSpoof => "TlsVersionSpoof",
             Self::SniRecordFrag => "SniRecordFrag",
-            Self::H2SettingsFlood => "H2SettingsFlood", Self::H2RstPadding => "H2RstPadding",
-            Self::H2WindowUpdateFlood => "H2WindowUpdateFlood", Self::H2PriorityAbuse => "H2PriorityAbuse",
-            Self::H2Goaway => "H2Goaway", Self::ChunkObfuscation => "ChunkObfuscation",
-            Self::H2FrameOrdering => "H2FrameOrdering", Self::Http11Pipeline => "Http11Pipeline",
-            Self::ContentLengthFuzz => "ContentLengthFuzz", Self::HttpUpgradeAbuse => "HttpUpgradeAbuse",
+            Self::H2SettingsFlood => "H2SettingsFlood",
+            Self::H2RstPadding => "H2RstPadding",
+            Self::H2WindowUpdateFlood => "H2WindowUpdateFlood",
+            Self::H2PriorityAbuse => "H2PriorityAbuse",
+            Self::H2Goaway => "H2Goaway",
+            Self::ChunkObfuscation => "ChunkObfuscation",
+            Self::H2FrameOrdering => "H2FrameOrdering",
+            Self::Http11Pipeline => "Http11Pipeline",
+            Self::ContentLengthFuzz => "ContentLengthFuzz",
+            Self::HttpUpgradeAbuse => "HttpUpgradeAbuse",
             Self::HttpCaseMix => "HttpCaseMix",
-            Self::QuicBlocking => "QuicBlocking", Self::QuicVersionDowngrade => "QuicVersionDowngrade",
-            Self::QuicRetryInject => "QuicRetryInject", Self::QuicConnectionClose => "QuicConnectionClose",
-            Self::QuicStreamReset => "QuicStreamReset", Self::QuicMaxStreams => "QuicMaxStreams",
-            Self::Udp2Icmp => "Udp2Icmp", Self::XorFirst => "XorFirst",
-            Self::WgObfs => "WgObfs", Self::ChaCha20 => "ChaCha20",
+            Self::QuicBlocking => "QuicBlocking",
+            Self::QuicVersionDowngrade => "QuicVersionDowngrade",
+            Self::QuicRetryInject => "QuicRetryInject",
+            Self::QuicConnectionClose => "QuicConnectionClose",
+            Self::QuicStreamReset => "QuicStreamReset",
+            Self::QuicMaxStreams => "QuicMaxStreams",
+            Self::Udp2Icmp => "Udp2Icmp",
+            Self::XorFirst => "XorFirst",
+            Self::WgObfs => "WgObfs",
+            Self::ChaCha20 => "ChaCha20",
             Self::ReverseFragmentOrder => "ReverseFragmentOrder",
         }
     }
 
     pub fn source(&self) -> &'static str {
         match self {
-            Self::MultiSplit => "zapret", Self::MultiDisorder => "zapret",
-            Self::HostFakeSplit => "zapret", Self::FakeDataSplit => "zapret",
-            Self::FakeDataDisorder => "zapret", Self::TcpSeg => "zapret",
-            Self::SynData => "zapret", Self::SynAckSplit => "zapret",
-            Self::WinSize => "zapret", Self::SynHide => "zapret",
-            Self::FakeSni => "byedpi", Self::OobInjection => "byedpi",
-            Self::TcpPreopen => "byedpi", Self::MssClamp => "dpibreak",
-            Self::AckSuppress => "dpibreak", Self::PktReorder => "dpibreak",
-            Self::RstSelective => "dpibreak", Self::SynFloodDecoy => "dpibreak",
-            Self::WinScaleManip => "dpibreak", Self::Disorder => "RIPDPI",
-            Self::MultidisorderNew => "RIPDPI", Self::Disoob => "RIPDPI",
-            Self::HostFake => "RIPDPI", Self::FakeRst => "RIPDPI",
-            Self::ByteByByte => "rust-no-dpi-socks", Self::UnidirFrag => "rust-no-dpi-socks",
-            Self::PortShuffle => "CandyTunnel", Self::Wclamp => "RIPDPI",
+            Self::MultiSplit => "zapret",
+            Self::MultiDisorder => "zapret",
+            Self::HostFakeSplit => "zapret",
+            Self::FakeDataSplit => "zapret",
+            Self::FakeDataDisorder => "zapret",
+            Self::TcpSeg => "zapret",
+            Self::SynData => "zapret",
+            Self::SynAckSplit => "zapret",
+            Self::WinSize => "zapret",
+            Self::SynHide => "zapret",
+            Self::FakeSni => "byedpi",
+            Self::OobInjection => "byedpi",
+            Self::TcpPreopen => "byedpi",
+            Self::MssClamp => "dpibreak",
+            Self::AckSuppress => "dpibreak",
+            Self::PktReorder => "dpibreak",
+            Self::RstSelective => "dpibreak",
+            Self::SynFloodDecoy => "dpibreak",
+            Self::WinScaleManip => "dpibreak",
+            Self::Disorder => "RIPDPI",
+            Self::MultidisorderNew => "RIPDPI",
+            Self::Disoob => "RIPDPI",
+            Self::HostFake => "RIPDPI",
+            Self::FakeRst => "RIPDPI",
+            Self::ByteByByte => "rust-no-dpi-socks",
+            Self::UnidirFrag => "rust-no-dpi-socks",
+            Self::PortShuffle => "CandyTunnel",
+            Self::Wclamp => "RIPDPI",
             Self::TsMd5 => "RIPDPI",
-            Self::FragOverlap => "dpibreak", Self::BadChecksum => "zapret",
-            Self::TtlManipulation => "zapret", Self::IpFragPrimitives => "zapret",
-            Self::RstDropIpId => "offveil", Self::TtlJitter => "CandyTunnel",
-            Self::DscpRandom => "CandyTunnel", Self::MutualSpoof => "CandyTunnel",
-            Self::TlsRecordFrag => "zapret", Self::TlsRecordPad => "zapret",
-            Self::SniMasking => "offveil", Self::SniMicrofrag => "omoikane",
-            Self::TlsRecordRewrap => "greentunnel", Self::TlsVersionSpoof => "demergi",
+            Self::FragOverlap => "dpibreak",
+            Self::BadChecksum => "zapret",
+            Self::TtlManipulation => "zapret",
+            Self::IpFragPrimitives => "zapret",
+            Self::RstDropIpId => "offveil",
+            Self::TtlJitter => "CandyTunnel",
+            Self::DscpRandom => "CandyTunnel",
+            Self::MutualSpoof => "CandyTunnel",
+            Self::TlsRecordFrag => "zapret",
+            Self::TlsRecordPad => "zapret",
+            Self::SniMasking => "offveil",
+            Self::SniMicrofrag => "omoikane",
+            Self::TlsRecordRewrap => "greentunnel",
+            Self::TlsVersionSpoof => "demergi",
             Self::SniRecordFrag => "nodpi",
-            Self::H2SettingsFlood => "NaiveProxy", Self::H2RstPadding => "NaiveProxy",
-            Self::H2WindowUpdateFlood => "NaiveProxy", Self::H2PriorityAbuse => "NaiveProxy",
-            Self::H2Goaway => "NaiveProxy", Self::ChunkObfuscation => "b4",
-            Self::H2FrameOrdering => "RIPDPI", Self::Http11Pipeline => "byedpi",
-            Self::ContentLengthFuzz => "byedpi", Self::HttpUpgradeAbuse => "byedpi",
+            Self::H2SettingsFlood => "NaiveProxy",
+            Self::H2RstPadding => "NaiveProxy",
+            Self::H2WindowUpdateFlood => "NaiveProxy",
+            Self::H2PriorityAbuse => "NaiveProxy",
+            Self::H2Goaway => "NaiveProxy",
+            Self::ChunkObfuscation => "b4",
+            Self::H2FrameOrdering => "RIPDPI",
+            Self::Http11Pipeline => "byedpi",
+            Self::ContentLengthFuzz => "byedpi",
+            Self::HttpUpgradeAbuse => "byedpi",
             Self::HttpCaseMix => "demergi",
-            Self::QuicBlocking => "zapret", Self::QuicVersionDowngrade => "zapret",
-            Self::QuicRetryInject => "zapret", Self::QuicConnectionClose => "zapret",
-            Self::QuicStreamReset => "zapret", Self::QuicMaxStreams => "zapret",
-            Self::Udp2Icmp => "zapret", Self::XorFirst => "dpimyass",
-            Self::WgObfs => "zapret", Self::ChaCha20 => "CandyTunnel",
+            Self::QuicBlocking => "zapret",
+            Self::QuicVersionDowngrade => "zapret",
+            Self::QuicRetryInject => "zapret",
+            Self::QuicConnectionClose => "zapret",
+            Self::QuicStreamReset => "zapret",
+            Self::QuicMaxStreams => "zapret",
+            Self::Udp2Icmp => "zapret",
+            Self::XorFirst => "dpimyass",
+            Self::WgObfs => "zapret",
+            Self::ChaCha20 => "CandyTunnel",
             Self::ReverseFragmentOrder => "offveil",
         }
     }
 
     pub fn category(&self) -> TechniqueCategory {
         match self {
-            Self::MultiSplit | Self::MultiDisorder | Self::HostFakeSplit
-            | Self::FakeDataSplit | Self::FakeDataDisorder | Self::TcpSeg
-            | Self::SynData | Self::SynAckSplit | Self::WinSize | Self::SynHide
-            | Self::FakeSni | Self::OobInjection | Self::TcpPreopen | Self::MssClamp
-            | Self::AckSuppress | Self::PktReorder | Self::RstSelective
-            | Self::SynFloodDecoy | Self::WinScaleManip | Self::Disorder
-            | Self::MultidisorderNew | Self::Disoob | Self::HostFake | Self::FakeRst
-            | Self::ByteByByte | Self::UnidirFrag | Self::PortShuffle | Self::Wclamp
+            Self::MultiSplit
+            | Self::MultiDisorder
+            | Self::HostFakeSplit
+            | Self::FakeDataSplit
+            | Self::FakeDataDisorder
+            | Self::TcpSeg
+            | Self::SynData
+            | Self::SynAckSplit
+            | Self::WinSize
+            | Self::SynHide
+            | Self::FakeSni
+            | Self::OobInjection
+            | Self::TcpPreopen
+            | Self::MssClamp
+            | Self::AckSuppress
+            | Self::PktReorder
+            | Self::RstSelective
+            | Self::SynFloodDecoy
+            | Self::WinScaleManip
+            | Self::Disorder
+            | Self::MultidisorderNew
+            | Self::Disoob
+            | Self::HostFake
+            | Self::FakeRst
+            | Self::ByteByByte
+            | Self::UnidirFrag
+            | Self::PortShuffle
+            | Self::Wclamp
             | Self::TsMd5 => TechniqueCategory::Tcp,
-            Self::FragOverlap | Self::BadChecksum | Self::TtlManipulation
-            | Self::IpFragPrimitives | Self::RstDropIpId | Self::TtlJitter
-            | Self::DscpRandom | Self::MutualSpoof | Self::ReverseFragmentOrder => TechniqueCategory::Ip,
-            Self::TlsRecordFrag | Self::TlsRecordPad | Self::SniMasking
-            | Self::SniMicrofrag | Self::TlsRecordRewrap | Self::TlsVersionSpoof
+            Self::FragOverlap
+            | Self::BadChecksum
+            | Self::TtlManipulation
+            | Self::IpFragPrimitives
+            | Self::RstDropIpId
+            | Self::TtlJitter
+            | Self::DscpRandom
+            | Self::MutualSpoof
+            | Self::ReverseFragmentOrder => TechniqueCategory::Ip,
+            Self::TlsRecordFrag
+            | Self::TlsRecordPad
+            | Self::SniMasking
+            | Self::SniMicrofrag
+            | Self::TlsRecordRewrap
+            | Self::TlsVersionSpoof
             | Self::SniRecordFrag => TechniqueCategory::Tls,
-            Self::H2SettingsFlood | Self::H2RstPadding | Self::H2WindowUpdateFlood
-            | Self::H2PriorityAbuse | Self::H2Goaway | Self::ChunkObfuscation
-            | Self::H2FrameOrdering | Self::Http11Pipeline | Self::ContentLengthFuzz
-            | Self::HttpUpgradeAbuse | Self::HttpCaseMix => TechniqueCategory::Http,
-            Self::QuicBlocking | Self::QuicVersionDowngrade | Self::QuicRetryInject
-            | Self::QuicConnectionClose | Self::QuicStreamReset
-            | Self::QuicMaxStreams | Self::Udp2Icmp => TechniqueCategory::Quic,
+            Self::H2SettingsFlood
+            | Self::H2RstPadding
+            | Self::H2WindowUpdateFlood
+            | Self::H2PriorityAbuse
+            | Self::H2Goaway
+            | Self::ChunkObfuscation
+            | Self::H2FrameOrdering
+            | Self::Http11Pipeline
+            | Self::ContentLengthFuzz
+            | Self::HttpUpgradeAbuse
+            | Self::HttpCaseMix => TechniqueCategory::Http,
+            Self::QuicBlocking
+            | Self::QuicVersionDowngrade
+            | Self::QuicRetryInject
+            | Self::QuicConnectionClose
+            | Self::QuicStreamReset
+            | Self::QuicMaxStreams
+            | Self::Udp2Icmp => TechniqueCategory::Quic,
             Self::XorFirst | Self::WgObfs => TechniqueCategory::Obfs,
             Self::ChaCha20 => TechniqueCategory::Crypto,
         }
@@ -320,7 +498,14 @@ pub fn ipv4_checksum(header: &[u8]) -> u16 {
 /// Вспомогательная функция: вычисляет TCP checksum.
 pub fn tcp_checksum_v4(src: Ipv4Addr, dst: Ipv4Addr, segment: &[u8]) -> u16 {
     use pnet_packet::util;
-    util::ipv4_checksum(segment, 8, &[], &src, &dst, pnet_packet::ip::IpNextHeaderProtocols::Tcp)
+    util::ipv4_checksum(
+        segment,
+        8,
+        &[],
+        &src,
+        &dst,
+        pnet_packet::ip::IpNextHeaderProtocols::Tcp,
+    )
 }
 
 /// Парсит IP header для извлечения полей.

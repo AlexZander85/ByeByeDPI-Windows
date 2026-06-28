@@ -165,7 +165,12 @@ impl HealthChecker {
 
                 // Читаем ответ
                 let mut buf = [0u8; 2];
-                match timeout(Duration::from_secs(2), tokio::io::AsyncReadExt::read_exact(&mut stream, &mut buf)).await {
+                match timeout(
+                    Duration::from_secs(2),
+                    tokio::io::AsyncReadExt::read_exact(&mut stream, &mut buf),
+                )
+                .await
+                {
                     Ok(Ok(_n)) => {
                         if buf[0] == 0x05 && buf[1] == 0x00 {
                             debug!("SOCKS5 {}:{} — alive", host, port);
@@ -225,7 +230,9 @@ impl HealthChecker {
             Ok(Ok(mut stream)) => {
                 // HTTP HEAD запрос
                 let head = format!("HEAD / HTTP/1.0\r\nHost: {}\r\n\r\n", host);
-                if let Err(e) = tokio::io::AsyncWriteExt::write_all(&mut stream, head.as_bytes()).await {
+                if let Err(e) =
+                    tokio::io::AsyncWriteExt::write_all(&mut stream, head.as_bytes()).await
+                {
                     return HealthResult {
                         status: ProxyStatus::Dead,
                         checked_at: Instant::now(),
@@ -236,10 +243,17 @@ impl HealthChecker {
 
                 // Читаем первую строку ответа
                 let mut buf = [0u8; 1024];
-                match timeout(Duration::from_secs(2), tokio::io::AsyncReadExt::read(&mut stream, &mut buf)).await {
+                match timeout(
+                    Duration::from_secs(2),
+                    tokio::io::AsyncReadExt::read(&mut stream, &mut buf),
+                )
+                .await
+                {
                     Ok(Ok(n)) if n > 0 => {
                         let response = String::from_utf8_lossy(&buf[..n]);
-                        if response.contains("200 OK") || response.contains("200 Connection established") {
+                        if response.contains("200 OK")
+                            || response.contains("200 Connection established")
+                        {
                             debug!("HTTP {}:{} — alive", host, port);
                             HealthResult {
                                 status: ProxyStatus::Alive,
@@ -286,12 +300,8 @@ impl HealthChecker {
         for (key, proxy_type) in &proxies {
             let timeout_dur = Duration::from_secs(5);
             let result = match proxy_type {
-                ProxyType::Socks5 => {
-                    Self::check_socks5(&key.host, key.port, timeout_dur).await
-                }
-                ProxyType::Http => {
-                    Self::check_http(&key.host, key.port, timeout_dur).await
-                }
+                ProxyType::Socks5 => Self::check_socks5(&key.host, key.port, timeout_dur).await,
+                ProxyType::Http => Self::check_http(&key.host, key.port, timeout_dur).await,
             };
             self.status_cache.insert(key.clone(), result);
         }
@@ -300,7 +310,10 @@ impl HealthChecker {
     /// Запускает фоновый health checker с заданным интервалом.
     ///
     /// Возвращает `JoinHandle` для отмены через `.abort()`.
-    pub fn start_background_check(self: Arc<Self>, interval: Duration) -> tokio::task::JoinHandle<()> {
+    pub fn start_background_check(
+        self: Arc<Self>,
+        interval: Duration,
+    ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(interval);
             // Первая проверка сразу (не ждём interval)

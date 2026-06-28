@@ -69,7 +69,12 @@ impl DnsThreatLevel {
 
     /// Нужно ли применять desync для этого уровня.
     pub fn requires_desync(&self) -> bool {
-        matches!(self, DnsThreatLevel::TxidMismatch | DnsThreatLevel::FakeIpDetected | DnsThreatLevel::HeavyDpi)
+        matches!(
+            self,
+            DnsThreatLevel::TxidMismatch
+                | DnsThreatLevel::FakeIpDetected
+                | DnsThreatLevel::HeavyDpi
+        )
     }
 
     /// Рекомендуемая агрессивность (0-4).
@@ -190,7 +195,9 @@ impl TxidTracker {
         // Проверяем лимит
         if self.queries.len() >= self.max_queries {
             // Удаляем самый старый
-            if let Some(oldest_id) = self.queries.iter()
+            if let Some(oldest_id) = self
+                .queries
+                .iter()
                 .min_by_key(|(_, q)| q.timestamp)
                 .map(|(&id, _)| id)
             {
@@ -201,7 +208,8 @@ impl TxidTracker {
         let id = self.next_id;
         self.next_id += 1;
 
-        self.queries.insert(id, QueryState::new(domain.to_string(), txid));
+        self.queries
+            .insert(id, QueryState::new(domain.to_string(), txid));
 
         debug!("[OF5] DNS query #{}: {} TXID=0x{:04x}", id, domain, txid);
 
@@ -271,7 +279,10 @@ impl TxidTracker {
         if response_time_ms < self.fast_response_threshold_ms {
             self.fast_responses += 1;
             threats.push(DnsThreatLevel::FastResponse);
-            debug!("[OF5] Fast response for #{}: {}ms", query_id, response_time_ms);
+            debug!(
+                "[OF5] Fast response for #{}: {}ms",
+                query_id, response_time_ms
+            );
         }
 
         // Определяем итоговый уровень
@@ -291,7 +302,10 @@ impl TxidTracker {
 
         debug!(
             "[OF5] DNS response #{}: {} → {:?} ({})",
-            query_id, query_domain, result, result.name()
+            query_id,
+            query_domain,
+            result,
+            result.name()
         );
 
         result
@@ -301,7 +315,8 @@ impl TxidTracker {
     pub fn clean_stale(&mut self) {
         let cutoff = Instant::now() - self.query_ttl;
         let before = self.queries.len();
-        self.queries.retain(|_, q| q.timestamp > cutoff || q.answered);
+        self.queries
+            .retain(|_, q| q.timestamp > cutoff || q.answered);
         let removed = before - self.queries.len();
         if removed > 0 {
             debug!("[OF5] Cleaned {} stale DNS queries", removed);
@@ -347,8 +362,8 @@ impl Default for TxidTracker {
         // Известные DPI CIDR-блоки (пулы Роскомнадзора и др.)
         let known_dpi_cidrs: Vec<ipnet::Ipv4Net> = vec![
             "77.88.0.0/18".parse().unwrap(),  // TSPU (РКН) основной пул
-            "93.184.0.0/16".parse().unwrap(),  // ТСПУ расширенный
-            "95.108.0.0/16".parse().unwrap(),  // ТСПУ альтернативный
+            "93.184.0.0/16".parse().unwrap(), // ТСПУ расширенный
+            "95.108.0.0/16".parse().unwrap(), // ТСПУ альтернативный
         ];
 
         Self {

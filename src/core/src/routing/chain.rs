@@ -42,17 +42,11 @@ pub enum ChainError {
 
     /// Hop вернул ошибку
     #[error("Hop '{hop}' failed: {reason}")]
-    HopFailed {
-        hop: String,
-        reason: String,
-    },
+    HopFailed { hop: String, reason: String },
 
     /// Таймаут hop'а
     #[error("Hop '{hop}' timed out after {timeout:?}")]
-    HopTimeout {
-        hop: String,
-        timeout: Duration,
-    },
+    HopTimeout { hop: String, timeout: Duration },
 
     /// Невалидная конфигурация
     #[error("Chain configuration error: {0}")]
@@ -166,10 +160,7 @@ impl EgressChain {
     /// Вызывается при ошибке/таймауте hop'а.
     pub fn mark_bad(&self, target: &str, hop_index: usize) {
         if hop_index < self.hops.len() {
-            let key = format!(
-                "{}|{}|{}",
-                target, hop_index, self.hops[hop_index].egress
-            );
+            let key = format!("{}|{}|{}", target, hop_index, self.hops[hop_index].egress);
             let expires = Instant::now() + self.bad_route_ttl;
             self.bad_routes.insert(key, expires);
             debug!(

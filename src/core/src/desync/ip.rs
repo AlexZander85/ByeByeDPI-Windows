@@ -10,7 +10,7 @@
 //! Адаптировано из [dpibreak](https://github.com/hufrea/dpibreak) и
 //! [zapret](https://github.com/bol-van/zapret).
 
-use crate::desync::{parse_ip_header, DesyncResult, ipv4_checksum};
+use crate::desync::{ipv4_checksum, parse_ip_header, DesyncResult};
 use pnet_packet::ip::IpNextHeaderProtocol;
 use pnet_packet::ipv4::MutableIpv4Packet;
 use pnet_packet::MutablePacket;
@@ -33,11 +33,7 @@ use tracing::debug;
 /// ## Returns
 /// - modified: None (оригинал можно не менять)
 /// - inject: [frag1, frag2] — два фрагмента
-pub fn frag_overlap(
-    packet: &[u8],
-    fake_sni: &str,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn frag_overlap(packet: &[u8], fake_sni: &str, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -54,7 +50,9 @@ pub fn frag_overlap(
     // Фрагмент 1: fake CH, offset=0, MF=1, TTL-1
     let frag1_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let frag1 = build_ip_fragment(
-        ip.src, ip.dst, ip.protocol,
+        ip.src,
+        ip.dst,
+        ip.protocol,
         ip.identification.wrapping_add(1),
         0,
         true,
@@ -73,7 +71,9 @@ pub fn frag_overlap(
     let frag2_offset_units = overlap_offset.div_ceil(8) as u16;
 
     let frag2 = build_ip_fragment(
-        ip.src, ip.dst, ip.protocol,
+        ip.src,
+        ip.dst,
+        ip.protocol,
         ip.identification.wrapping_add(1),
         frag2_offset_units,
         false,
@@ -81,8 +81,10 @@ pub fn frag_overlap(
         payload,
     );
 
-    debug!("[W1] FragOverlap: fake {} overlapped at offset {}",
-        fake_sni, overlap_offset);
+    debug!(
+        "[W1] FragOverlap: fake {} overlapped at offset {}",
+        fake_sni, overlap_offset
+    );
 
     DesyncResult::inject_many(vec![frag1, frag2])
 }
@@ -108,14 +110,10 @@ pub fn bad_checksum(packet: &[u8]) -> DesyncResult {
 
     let csum_offset = 10;
     if csum_offset + 2 <= modified.len() {
-        let old_csum = u16::from_be_bytes([
-            modified[csum_offset],
-            modified[csum_offset + 1],
-        ]);
+        let old_csum = u16::from_be_bytes([modified[csum_offset], modified[csum_offset + 1]]);
         let delta = crate::desync::rand::random_range(1, 65535) as u16;
         let new_csum = old_csum.wrapping_add(delta);
-        modified[csum_offset..csum_offset + 2]
-            .copy_from_slice(&new_csum.to_be_bytes());
+        modified[csum_offset..csum_offset + 2].copy_from_slice(&new_csum.to_be_bytes());
     }
 
     let tcp_checksum_offset = ip.header_len + 16;
@@ -179,11 +177,7 @@ pub fn ttl_manipulation(packet: &[u8], new_ttl: u8) -> DesyncResult {
 /// - Каждый фрагмент = 1 байт TCP payload — максимальная фрагментация
 /// - Первый фрагмент = fake SNI, остальные = реальные данные
 /// - Чередование правильных и bad checksum фрагментов
-pub fn ip_frag_primitives(
-    packet: &[u8],
-    frag_size: usize,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn ip_frag_primitives(packet: &[u8], frag_size: usize, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -211,7 +205,9 @@ pub fn ip_frag_primitives(
         };
 
         let frag = build_ip_fragment(
-            ip.src, ip.dst, ip.protocol,
+            ip.src,
+            ip.dst,
+            ip.protocol,
             frag_id,
             (pos / 8) as u16,
             !is_last,
@@ -222,8 +218,11 @@ pub fn ip_frag_primitives(
         pos = end;
     }
 
-    debug!("[Z15] IpFragPrimitives: {} fragments × {} bytes max",
-        inject.len(), frag_size);
+    debug!(
+        "[Z15] IpFragPrimitives: {} fragments × {} bytes max",
+        inject.len(),
+        frag_size
+    );
 
     DesyncResult::inject_many(inject)
 }
@@ -394,10 +393,7 @@ fn build_fake_ch(sni: &str) -> Vec<u8> {
 /// ## Принцип
 /// DPI использует TTL для fingerprinting ОС и обнаружения desync.
 /// Случайный TTL (TTL ± random(3)) маскирует fingerprint.
-pub fn ttl_jitter(
-    packet: &[u8],
-    base_ttl: Option<u8>,
-) -> DesyncResult {
+pub fn ttl_jitter(packet: &[u8], base_ttl: Option<u8>) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -432,8 +428,7 @@ pub fn dscp_random(packet: &[u8]) -> DesyncResult {
     };
 
     let current_dscp = (packet[1] >> 2) & 0x3F;
-    let new_dscp = [0u8, 8, 16, 24, 32, 40, 48]
-        [(crate::desync::rand::random_u32() % 7) as usize];
+    let new_dscp = [0u8, 8, 16, 24, 32, 40, 48][(crate::desync::rand::random_u32() % 7) as usize];
 
     if new_dscp == current_dscp {
         return DesyncResult::passthrough();
@@ -480,11 +475,11 @@ pub fn mutual_spoof(packet: &[u8]) -> DesyncResult {
             modified[tcp_start + 17] = 0;
         }
         let tcp_csum = crate::desync::tcp_checksum_v4(
-            new_src, new_dst,
+            new_src,
+            new_dst,
             &modified[tcp_start..tcp_start + tcp_len],
         );
-        modified[tcp_start + 16..tcp_start + 18]
-            .copy_from_slice(&tcp_csum.to_be_bytes());
+        modified[tcp_start + 16..tcp_start + 18].copy_from_slice(&tcp_csum.to_be_bytes());
     }
 
     debug!("[CT1] MutualSpoof: src={} → dst={}", ip.src, ip.dst);

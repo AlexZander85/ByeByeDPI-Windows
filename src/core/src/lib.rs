@@ -3,18 +3,18 @@
 //! Core library providing the packet engine, connection tracking,
 //! split tunneling, and runtime infrastructure for DPI bypass on Windows.
 
-pub mod packet_engine;
-pub mod conntrack;
-pub mod split_tunnel;
+pub mod adaptive;
 pub mod classifier;
 pub mod config;
-pub mod dns;
-pub mod infra;
-pub mod adaptive;
-pub mod routing;
-pub mod engine;
+pub mod conntrack;
 pub mod desync;
+pub mod dns;
+pub mod engine;
+pub mod infra;
+pub mod packet_engine;
 pub mod proxy;
+pub mod routing;
+pub mod split_tunnel;
 
 use rayon::ThreadPoolBuilder;
 use std::sync::OnceLock;

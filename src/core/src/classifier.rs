@@ -1,11 +1,7 @@
 //! Packet Classifier — классификация пакетов по протоколу и направлению.
 
 use crate::conntrack::ConnKey;
-use pnet_packet::{
-    ipv4::Ipv4Packet,
-    tcp::TcpPacket,
-    udp::UdpPacket,
-};
+use pnet_packet::{ipv4::Ipv4Packet, tcp::TcpPacket, udp::UdpPacket};
 use std::net::Ipv4Addr;
 
 /// Направление пакета относительно origin.
@@ -151,10 +147,7 @@ impl Classifier {
     ///
     /// Если src_ip — локальный → Outbound.
     /// Иначе → Inbound (ответ сервера).
-    pub fn determine_direction(
-        local_ips: &[Ipv4Addr],
-        cp: &ClassifiedPacket,
-    ) -> PacketDirection {
+    pub fn determine_direction(local_ips: &[Ipv4Addr], cp: &ClassifiedPacket) -> PacketDirection {
         if local_ips.contains(&cp.src_ip) {
             PacketDirection::Outbound
         } else {
@@ -172,10 +165,8 @@ impl Classifier {
 
     /// Проверяет, является ли пакет TLS ServerHello.
     pub fn is_server_hello(payload: &[u8]) -> bool {
-        payload.len() > 5
-            && payload[0] == 0x16
-            && (payload[1] == 0x03)
-            && payload[5] == 0x02 // HandshakeType: ServerHello
+        payload.len() > 5 && payload[0] == 0x16 && (payload[1] == 0x03) && payload[5] == 0x02
+        // HandshakeType: ServerHello
     }
 
     /// Извлекает SNI из TLS ClientHello.
@@ -194,9 +185,8 @@ impl Classifier {
             return None;
         }
 
-        let cipher_suites_len =
-            ((payload[44 + session_id_len] as usize) << 8)
-                | (payload[45 + session_id_len] as usize);
+        let cipher_suites_len = ((payload[44 + session_id_len] as usize) << 8)
+            | (payload[45 + session_id_len] as usize);
 
         let mut pos = 46 + session_id_len + cipher_suites_len;
 
@@ -211,16 +201,13 @@ impl Classifier {
             return None;
         }
 
-        let ext_total_len =
-            ((payload[pos] as usize) << 8) | (payload[pos + 1] as usize);
+        let ext_total_len = ((payload[pos] as usize) << 8) | (payload[pos + 1] as usize);
         pos += 2;
 
         let end = pos + ext_total_len;
         while pos + 4 <= end && pos + 4 <= payload.len() {
-            let ext_type =
-                ((payload[pos] as usize) << 8) | (payload[pos + 1] as usize);
-            let ext_len =
-                ((payload[pos + 2] as usize) << 8) | (payload[pos + 3] as usize);
+            let ext_type = ((payload[pos] as usize) << 8) | (payload[pos + 1] as usize);
+            let ext_len = ((payload[pos + 2] as usize) << 8) | (payload[pos + 3] as usize);
 
             pos += 4;
 
@@ -229,22 +216,17 @@ impl Classifier {
                 if pos + 3 > payload.len() {
                     return None;
                 }
-                let sni_list_len =
-                    ((payload[pos] as usize) << 8) | (payload[pos + 1] as usize);
+                let sni_list_len = ((payload[pos] as usize) << 8) | (payload[pos + 1] as usize);
                 if pos + 3 + sni_list_len > payload.len() {
                     return None;
                 }
                 let name_type = payload[pos + 2];
                 if name_type == 0 {
                     // host_name
-                    let name_len =
-                        ((payload[pos + 3] as usize) << 8)
-                            | (payload[pos + 4] as usize);
+                    let name_len = ((payload[pos + 3] as usize) << 8) | (payload[pos + 4] as usize);
                     if pos + 5 + name_len <= payload.len() {
-                        return String::from_utf8(
-                            payload[pos + 5..pos + 5 + name_len].to_vec(),
-                        )
-                        .ok();
+                        return String::from_utf8(payload[pos + 5..pos + 5 + name_len].to_vec())
+                            .ok();
                     }
                 }
                 return None;
@@ -266,8 +248,7 @@ mod tests {
         // Build a minimal TCP SYN packet
         let pkt = vec![
             0x45, 0x00, 0x00, 0x28, // IP header
-            0x00, 0x00, 0x40, 0x00,
-            0x40, 0x06, 0x00, 0x00, // TCP proto
+            0x00, 0x00, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, // TCP proto
             0xc0, 0xa8, 0x01, 0x01, // src: 192.168.1.1
             0x08, 0x08, 0x08, 0x08, // dst: 8.8.8.8
             // TCP header (20 bytes)
@@ -293,11 +274,8 @@ mod tests {
     fn test_classify_dns() {
         let pkt = vec![
             0x45, 0x00, 0x00, 0x1c, // IP header
-            0x00, 0x00, 0x40, 0x00,
-            0x40, 0x11, 0x00, 0x00, // UDP proto
-            0xc0, 0xa8, 0x01, 0x01,
-            0x08, 0x08, 0x08, 0x08,
-            // UDP header (8 bytes)
+            0x00, 0x00, 0x40, 0x00, 0x40, 0x11, 0x00, 0x00, // UDP proto
+            0xc0, 0xa8, 0x01, 0x01, 0x08, 0x08, 0x08, 0x08, // UDP header (8 bytes)
             0x00, 0x35, // src port: 53
             0x00, 0x35, // dst port: 53
             0x00, 0x08, 0x00, 0x00, // length + checksum

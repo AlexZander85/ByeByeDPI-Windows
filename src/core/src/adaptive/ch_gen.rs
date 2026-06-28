@@ -111,8 +111,8 @@ pub fn build_client_hello(sni: &str) -> Vec<u8> {
     let tpl_sni_len = TEMPLATE_SNI.len();
 
     // Сегменты шаблона (до SNI, после random, после session_id, после SNI, до key_share)
-    let static1 = &tpl[..11];          // TLS record header + handshake header
-    let static3 = &tpl[76..120];       // cipher suites + compression + extensions header
+    let static1 = &tpl[..11]; // TLS record header + handshake header
+    let static3 = &tpl[76..120]; // cipher suites + compression + extensions header
     let static4 = &tpl[127 + tpl_sni_len..262 + tpl_sni_len]; // после SNI до key_share
 
     // Случайные данные

@@ -23,12 +23,12 @@
 //! ## Источник
 //! Адаптировано из [Nova](https://github.com/patrykkalinowski/nova) и [sing-box](https://github.com/SagerNet/sing-box).
 
-pub mod geo;
-pub mod detect;
 pub mod chain;
+pub mod detect;
+pub mod domain_trie;
+pub mod geo;
 pub mod health;
 pub mod opera;
-pub mod domain_trie;
 
 #[cfg(test)]
 mod tests;
@@ -180,9 +180,10 @@ impl RouteDecision {
 
     /// Проверяет, нужно ли применять DPI desync.
     pub fn needs_desync(&self) -> bool {
-        !self.excluded && self.egress_chain.iter().any(|hop| matches!(
-            &hop.egress,
-            Egress::Direct { desync: true }
-        ))
+        !self.excluded
+            && self
+                .egress_chain
+                .iter()
+                .any(|hop| matches!(&hop.egress, Egress::Direct { desync: true }))
     }
 }

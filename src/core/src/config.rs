@@ -164,10 +164,18 @@ pub struct DesyncSection {
     pub techniques: Vec<String>,
 }
 
-fn default_fake_sni() -> String { "www.google.com".to_string() }
-fn default_split_count() -> usize { 3 }
-fn default_fake_ttl_offset() -> u8 { 1 }
-fn default_inject_delay() -> u64 { 1000 }
+fn default_fake_sni() -> String {
+    "www.google.com".to_string()
+}
+fn default_split_count() -> usize {
+    3
+}
+fn default_fake_ttl_offset() -> u8 {
+    1
+}
+fn default_inject_delay() -> u64 {
+    1000
+}
 
 impl Default for DesyncSection {
     fn default() -> Self {
@@ -227,7 +235,10 @@ impl Config {
             reseed_interval: 8192,
         };
 
-        let techniques: Vec<DesyncTechnique> = self.desync.techniques.iter()
+        let techniques: Vec<DesyncTechnique> = self
+            .desync
+            .techniques
+            .iter()
             .filter_map(|name| parse_technique(name))
             .collect();
 

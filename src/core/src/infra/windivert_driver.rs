@@ -58,7 +58,9 @@ pub fn install_driver() -> Result<()> {
     unsafe {
         let mutex = windows::Win32::System::Threading::CreateMutexW(None, true, &mutex_name);
         if let Ok(m) = mutex {
-            if windows::Win32::Foundation::GetLastError().0 == windows::Win32::Foundation::ERROR_ALREADY_EXISTS.0 {
+            if windows::Win32::Foundation::GetLastError().0
+                == windows::Win32::Foundation::ERROR_ALREADY_EXISTS.0
+            {
                 // Другой процесс устанавливает driver — ждём
                 windows::Win32::System::Threading::WaitForSingleObject(m, 30_000);
             }
@@ -116,9 +118,7 @@ pub fn install_driver() -> Result<()> {
     };
 
     // Запускаем сервис
-    let start_result = unsafe {
-        windows::Win32::System::Services::StartServiceW(service, None)
-    };
+    let start_result = unsafe { windows::Win32::System::Services::StartServiceW(service, None) };
 
     match start_result {
         Ok(()) => {

@@ -447,10 +447,18 @@ mod tests {
         struct ApplicableTest(bool);
 
         impl Strategy for ApplicableTest {
-            fn id(&self) -> u32 { 2 }
-            fn name(&self) -> &'static str { "applicable_test" }
-            fn description(&self) -> &'static str { "Test applicable filter" }
-            fn category(&self) -> StrategyCategory { StrategyCategory::General }
+            fn id(&self) -> u32 {
+                2
+            }
+            fn name(&self) -> &'static str {
+                "applicable_test"
+            }
+            fn description(&self) -> &'static str {
+                "Test applicable filter"
+            }
+            fn category(&self) -> StrategyCategory {
+                StrategyCategory::General
+            }
 
             fn apply(&self, _pkt: &mut [u8], _ctx: &StrategyCtx) -> Result<StrategyResult> {
                 Ok(StrategyResult::Modified(vec![1, 2, 3]))
@@ -462,8 +470,8 @@ mod tests {
         }
 
         assert!(!ApplicableTest(false).applicable(&[0u8; 3]));
-        assert!(!ApplicableTest(true).applicable(&[0u8; 3]));  // too short
-        assert!(ApplicableTest(true).applicable(&[0u8; 10]));  // ok
+        assert!(!ApplicableTest(true).applicable(&[0u8; 3])); // too short
+        assert!(ApplicableTest(true).applicable(&[0u8; 10])); // ok
     }
 
     #[test]
@@ -488,20 +496,39 @@ mod tests {
             cat: StrategyCategory,
         }
         impl Strategy for CatStrategy {
-            fn id(&self) -> u32 { self.id }
-            fn name(&self) -> &'static str { "cat_test" }
-            fn description(&self) -> &'static str { "" }
-            fn category(&self) -> StrategyCategory { self.cat }
+            fn id(&self) -> u32 {
+                self.id
+            }
+            fn name(&self) -> &'static str {
+                "cat_test"
+            }
+            fn description(&self) -> &'static str {
+                ""
+            }
+            fn category(&self) -> StrategyCategory {
+                self.cat
+            }
             fn apply(&self, _pkt: &mut [u8], _ctx: &StrategyCtx) -> Result<StrategyResult> {
                 Ok(StrategyResult::Passthrough)
             }
-            fn applicable(&self, _pkt: &[u8]) -> bool { true }
+            fn applicable(&self, _pkt: &[u8]) -> bool {
+                true
+            }
         }
 
         let registry = StrategyRegistry::new_local();
-        registry.register(Box::new(CatStrategy { id: 1, cat: StrategyCategory::Tcp }));
-        registry.register(Box::new(CatStrategy { id: 2, cat: StrategyCategory::Tcp }));
-        registry.register(Box::new(CatStrategy { id: 3, cat: StrategyCategory::Tls }));
+        registry.register(Box::new(CatStrategy {
+            id: 1,
+            cat: StrategyCategory::Tcp,
+        }));
+        registry.register(Box::new(CatStrategy {
+            id: 2,
+            cat: StrategyCategory::Tcp,
+        }));
+        registry.register(Box::new(CatStrategy {
+            id: 3,
+            cat: StrategyCategory::Tls,
+        }));
 
         let stats = registry.category_stats();
         assert_eq!(stats.get(&StrategyCategory::Tcp), Some(&2));
@@ -530,7 +557,7 @@ mod tests {
             Ipv4Addr::new(142, 250, 185, 46), // google.com
             443,
             vec![0x16, 0x03, 0x01, 0x00, 0x02, 0x01], // minimal CH
-            vec![0x45, 0x00, 0x00, 0x3c], // minimal IP
+            vec![0x45, 0x00, 0x00, 0x3c],             // minimal IP
             conntrack.clone(),
         );
 

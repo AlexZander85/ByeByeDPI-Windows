@@ -29,7 +29,9 @@ impl std::fmt::Debug for HopTab {
 
 impl HopTab {
     pub fn new() -> Self {
-        Self { cache: [const { AtomicU64::new(0) }; HOPTAB_SIZE] }
+        Self {
+            cache: [const { AtomicU64::new(0) }; HOPTAB_SIZE],
+        }
     }
 
     pub fn estimate(recv_ttl: u8) -> u8 {
@@ -61,12 +63,18 @@ impl HopTab {
     pub fn get(&self, dst_ip: u32) -> Option<u8> {
         let idx = Self::hash(dst_ip);
         let (ip, hops) = unpack_entry(self.cache[idx].load(Ordering::Relaxed));
-        if ip == dst_ip { Some(hops) } else { None }
+        if ip == dst_ip {
+            Some(hops)
+        } else {
+            None
+        }
     }
 
     pub fn fake_ttl(&self, dst_ip: u32) -> Option<u8> {
         self.get(dst_ip).map(|hops| {
-            if hops <= 2 { return 0; }
+            if hops <= 2 {
+                return 0;
+            }
             (hops - 1).clamp(2, 64)
         })
     }
@@ -87,13 +95,19 @@ impl HopTab {
     }
 
     pub fn len(&self) -> usize {
-        self.cache.iter().filter(|e| unpack_entry(e.load(Ordering::Relaxed)).0 != 0).count()
+        self.cache
+            .iter()
+            .filter(|e| unpack_entry(e.load(Ordering::Relaxed)).0 != 0)
+            .count()
     }
 
-    pub fn is_empty(&self) -> bool { self.len() == 0 }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 
     pub fn snapshot(&self) -> Vec<(u32, u8)> {
-        self.cache.iter()
+        self.cache
+            .iter()
             .map(|e| unpack_entry(e.load(Ordering::Relaxed)))
             .filter(|(ip, _)| *ip != 0)
             .collect()
@@ -101,7 +115,9 @@ impl HopTab {
 }
 
 impl Default for HopTab {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]

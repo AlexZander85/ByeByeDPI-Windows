@@ -27,12 +27,12 @@
 //! [dpibreak](https://github.com/hufrea/dpibreak),
 //! [sni-spoofing-rust](https://github.com/HirbodBehnam/sni-spoofing-rust).
 
-pub mod strategy;
-pub mod hop_tab;
-pub mod ch_gen;
-pub mod seq_spoof;
-pub mod probe_tune_run;
-pub mod persist;
-pub mod target_escalate;
-pub mod fallback;
 pub mod auto_tune;
+pub mod ch_gen;
+pub mod fallback;
+pub mod hop_tab;
+pub mod persist;
+pub mod probe_tune_run;
+pub mod seq_spoof;
+pub mod strategy;
+pub mod target_escalate;

@@ -43,16 +43,34 @@ fn test_geo_region_hash() {
 
 #[test]
 fn test_egress_display() {
-    assert_eq!(format!("{}", Egress::Direct { desync: true }), "Direct(desync)");
-    assert_eq!(format!("{}", Egress::Direct { desync: false }), "Direct(pass)");
-    assert_eq!(format!("{}", Egress::Socks5 { host: "127.0.0.1".into(), port: 9050 }), "SOCKS5(127.0.0.1:9050)");
+    assert_eq!(
+        format!("{}", Egress::Direct { desync: true }),
+        "Direct(desync)"
+    );
+    assert_eq!(
+        format!("{}", Egress::Direct { desync: false }),
+        "Direct(pass)"
+    );
+    assert_eq!(
+        format!(
+            "{}",
+            Egress::Socks5 {
+                host: "127.0.0.1".into(),
+                port: 9050
+            }
+        ),
+        "SOCKS5(127.0.0.1:9050)"
+    );
     assert_eq!(format!("{}", Egress::OperaVpn), "OperaVPN");
     assert_eq!(format!("{}", Egress::UserProxy), "UserProxy");
 }
 
 #[test]
 fn test_egress_serde() {
-    let egress = Egress::Socks5 { host: "127.0.0.1".into(), port: 1080 };
+    let egress = Egress::Socks5 {
+        host: "127.0.0.1".into(),
+        port: 1080,
+    };
     let json = serde_json::to_string(&egress).unwrap();
     assert!(json.contains("127.0.0.1"));
     let back: Egress = serde_json::from_str(&json).unwrap();
@@ -103,10 +121,7 @@ fn test_route_decision_fallback() {
 fn test_route_decision_needs_desync() {
     let d = RouteDecision {
         region: GeoRegion::Russia,
-        egress_chain: vec![
-            EgressHop::direct(),
-            EgressHop::socks5("127.0.0.1", 9050),
-        ],
+        egress_chain: vec![EgressHop::direct(), EgressHop::socks5("127.0.0.1", 9050)],
         excluded: false,
     };
     assert!(d.needs_desync());
@@ -142,14 +157,20 @@ fn test_geo_router_classify_europe_by_domain() {
 fn test_geo_router_classify_us_by_domain() {
     let router = geo::GeoRouter::new_default();
     assert_eq!(router.classify("google.com", None), GeoRegion::UnitedStates);
-    assert_eq!(router.classify("facebook.com", None), GeoRegion::UnitedStates);
+    assert_eq!(
+        router.classify("facebook.com", None),
+        GeoRegion::UnitedStates
+    );
 }
 
 #[test]
 fn test_geo_router_classify_global() {
     let router = geo::GeoRouter::new_default();
     // Домен, которого нет ни в одном списке
-    assert_eq!(router.classify("example-unknown.com", None), GeoRegion::Global);
+    assert_eq!(
+        router.classify("example-unknown.com", None),
+        GeoRegion::Global
+    );
 }
 
 #[test]
@@ -158,7 +179,10 @@ fn test_geo_router_classify_by_cidr() {
     router.add_ru_cidr("77.88.0.0/18"); // Yandex IP range
     let ip: std::net::IpAddr = "77.88.55.66".parse().unwrap();
     // yandex.ru уже в RU по домену, но проверяем CIDR для неизвестного домена
-    assert_eq!(router.classify("unknown-yandex-ip.ru", Some(ip)), GeoRegion::Russia);
+    assert_eq!(
+        router.classify("unknown-yandex-ip.ru", Some(ip)),
+        GeoRegion::Russia
+    );
 }
 
 #[test]
@@ -252,18 +276,24 @@ fn test_detect_geo_block_keywords() {
 
 #[test]
 fn test_detect_dpi_block_rst() {
-    assert!(detect::GeoBlockDetector::detect_dpi_block("connection reset by peer"));
+    assert!(detect::GeoBlockDetector::detect_dpi_block(
+        "connection reset by peer"
+    ));
 }
 
 #[test]
 fn test_detect_dpi_block_timeout() {
-    assert!(detect::GeoBlockDetector::detect_dpi_block("connection timed out"));
+    assert!(detect::GeoBlockDetector::detect_dpi_block(
+        "connection timed out"
+    ));
 }
 
 #[test]
 fn test_detect_dpi_block_dns_error() {
     // DNS ошибка — не DPI
-    assert!(!detect::GeoBlockDetector::detect_dpi_block("no address found"));
+    assert!(!detect::GeoBlockDetector::detect_dpi_block(
+        "no address found"
+    ));
 }
 
 #[test]
@@ -277,19 +307,13 @@ fn test_detect_classify_geo() {
 
 #[test]
 fn test_detect_classify_dpi() {
-    let result = detect::GeoBlockDetector::classify(
-        "connection reset by peer",
-        None,
-    );
+    let result = detect::GeoBlockDetector::classify("connection reset by peer", None);
     assert_eq!(result, Some(false)); // DPI block
 }
 
 #[test]
 fn test_detect_classify_unknown() {
-    let result = detect::GeoBlockDetector::classify(
-        "unknown error",
-        None,
-    );
+    let result = detect::GeoBlockDetector::classify("unknown error", None);
     assert_eq!(result, None);
 }
 
@@ -323,9 +347,7 @@ fn test_chain_bad_route_skip() {
 
 #[test]
 fn test_chain_all_bad_fallback() {
-    let chain = chain::EgressChain::new(vec![
-        EgressHop::direct(),
-    ]);
+    let chain = chain::EgressChain::new(vec![EgressHop::direct()]);
     chain.mark_bad("example.com", 0);
     let attempts = chain.build_attempts("example.com");
     // Должен быть fallback direct
@@ -352,10 +374,7 @@ fn test_chain_default() {
 
 #[test]
 fn test_chain_hops_accessor() {
-    let chain = chain::EgressChain::new(vec![
-        EgressHop::direct(),
-        EgressHop::opera_vpn(),
-    ]);
+    let chain = chain::EgressChain::new(vec![EgressHop::direct(), EgressHop::opera_vpn()]);
     let hops = chain.hops();
     assert_eq!(hops.len(), 2);
     assert_eq!(format!("{}", hops[1].egress), "OperaVPN");
@@ -366,7 +385,10 @@ fn test_chain_hops_accessor() {
 #[test]
 fn test_health_checker_initial_state() {
     let checker = health::HealthChecker::new();
-    assert_eq!(checker.get_status("127.0.0.1", 9050, health::ProxyType::Socks5), health::ProxyStatus::Unknown);
+    assert_eq!(
+        checker.get_status("127.0.0.1", 9050, health::ProxyType::Socks5),
+        health::ProxyStatus::Unknown
+    );
 }
 
 #[test]
@@ -380,7 +402,10 @@ fn test_health_checker_add_and_status() {
         rt.block_on(async {
             let checker = checker;
             checker.add_socks5("127.0.0.1", 9050).await;
-            assert_eq!(checker.get_status("127.0.0.1", 9050, health::ProxyType::Socks5), health::ProxyStatus::Unknown);
+            assert_eq!(
+                checker.get_status("127.0.0.1", 9050, health::ProxyType::Socks5),
+                health::ProxyStatus::Unknown
+            );
             assert_eq!(checker.proxy_count().await, 1);
         });
     });

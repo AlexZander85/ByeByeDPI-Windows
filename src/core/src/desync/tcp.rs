@@ -40,7 +40,7 @@ impl TcpSegmentWriter {
         // IP header
         template[0] = 0x45;
         template[8] = 64; // TTL
-        template[9] = 6;  // TCP
+        template[9] = 6; // TCP
         template[12..16].copy_from_slice(&src.octets());
         template[16..20].copy_from_slice(&dst.octets());
         // TCP header
@@ -53,8 +53,16 @@ impl TcpSegmentWriter {
 
     /// Заполняет буфер TCP сегментом с указанными параметрами.
     #[allow(clippy::too_many_arguments)]
-    pub fn write(&self, buf: &mut Vec<u8>, seq: u32, ack: u32,
-                 flags: u8, payload: &[u8], ttl: u8, ident: u16) {
+    pub fn write(
+        &self,
+        buf: &mut Vec<u8>,
+        seq: u32,
+        ack: u32,
+        flags: u8,
+        payload: &[u8],
+        ttl: u8,
+        ident: u16,
+    ) {
         buf.clear();
         buf.extend_from_slice(&self.template);
         let total = 40 + payload.len();
@@ -124,7 +132,10 @@ pub fn multisplit(
 
         // Создаём TCP сегмент с флагом PSH
         let seg = build_tcp_segment(
-            ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+            ip.src,
+            ip.dst,
+            tcp.src_port,
+            tcp.dst_port,
             tcp.sequence.wrapping_add(start as u32),
             tcp.acknowledgment,
             TcpFlags::PSH | TcpFlags::ACK,
@@ -140,7 +151,10 @@ pub fn multisplit(
     let last_start = (actual_count - 1) * split_size;
     let remaining = &tcp.payload[last_start..];
     let modified = build_full_tcp_packet(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
         tcp.sequence.wrapping_add(last_start as u32),
         tcp.acknowledgment,
         TcpFlags::PSH | TcpFlags::ACK,
@@ -149,8 +163,12 @@ pub fn multisplit(
         ip.ttl,
     );
 
-    debug!("[Z1] MultiSplit: {} segs × {} bytes → {} injects",
-        actual_count, split_size, inject.len());
+    debug!(
+        "[Z1] MultiSplit: {} segs × {} bytes → {} injects",
+        actual_count,
+        split_size,
+        inject.len()
+    );
 
     DesyncResult {
         modified: Some(bytes::Bytes::from(modified)),
@@ -174,7 +192,10 @@ pub fn multidisorder(
     // Используем multisplit + переставляем inject в обратном порядке
     let mut result = multisplit(packet, split_size, split_count, fake_ttl_offset);
     result.inject.reverse();
-    debug!("[Z2] MultiDisorder: {} segments reversed", result.inject.len());
+    debug!(
+        "[Z2] MultiDisorder: {} segments reversed",
+        result.inject.len()
+    );
     result
 }
 
@@ -188,11 +209,7 @@ pub fn multidisorder(
 /// ## Параметры
 /// - `fake_sni`: SNI для fake ClientHello
 /// - `fake_ttl_offset`: TTL offset для fake данных
-pub fn fakedsplit(
-    packet: &bytes::Bytes,
-    fake_sni: &str,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn fakedsplit(packet: &bytes::Bytes, fake_sni: &str, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -214,7 +231,10 @@ pub fn fakedsplit(
     // Fake сегмент с TTL-1 — ТОТ ЖЕ SEQ что и оригинал
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_seg = build_tcp_segment(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
         tcp.sequence,
         tcp.acknowledgment,
         TcpFlags::PSH | TcpFlags::ACK,
@@ -224,8 +244,12 @@ pub fn fakedsplit(
         generate_identification(ip.identification, 0),
     );
 
-    debug!("[Z4] FakeDataSplit: fake '{}' ({} bytes) + real ({} bytes)",
-        fake_sni, fake_payload.len(), tcp.payload.len());
+    debug!(
+        "[Z4] FakeDataSplit: fake '{}' ({} bytes) + real ({} bytes)",
+        fake_sni,
+        fake_payload.len(),
+        tcp.payload.len()
+    );
 
     // inject_only — оригинал проходит через Forward без модификации
     DesyncResult::inject_only(fake_seg)
@@ -261,7 +285,10 @@ pub fn tcpseg(packet: &bytes::Bytes, max_seg_size: usize, _fake_ttl_offset: u8) 
         let seg = &tcp.payload[pos..end];
 
         let pkt = build_tcp_segment(
-            ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+            ip.src,
+            ip.dst,
+            tcp.src_port,
+            tcp.dst_port,
             tcp.sequence.wrapping_add(pos as u32),
             tcp.acknowledgment,
             TcpFlags::PSH | TcpFlags::ACK,
@@ -277,7 +304,10 @@ pub fn tcpseg(packet: &bytes::Bytes, max_seg_size: usize, _fake_ttl_offset: u8) 
     // Последний фрагмент — нормальный TTL
     let remaining = &tcp.payload[pos..];
     let modified = build_full_tcp_packet(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
         tcp.sequence.wrapping_add(pos as u32),
         tcp.acknowledgment,
         TcpFlags::PSH | TcpFlags::ACK,
@@ -286,7 +316,11 @@ pub fn tcpseg(packet: &bytes::Bytes, max_seg_size: usize, _fake_ttl_offset: u8) 
         ip.ttl,
     );
 
-    debug!("[Z6] TcpSeg: {} segs × {} bytes max", inject.len() + 1, max_seg_size);
+    debug!(
+        "[Z6] TcpSeg: {} segs × {} bytes max",
+        inject.len() + 1,
+        max_seg_size
+    );
 
     DesyncResult {
         modified: Some(bytes::Bytes::from(modified)),
@@ -320,7 +354,10 @@ pub fn syndata(packet: &bytes::Bytes, sync_data: &[u8], fake_ttl_offset: u8) -> 
     // SYN с данными (флаг SYN + PSH)
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let inject_pkt = build_tcp_segment(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
         tcp.sequence,
         0,
         TcpFlags::SYN | TcpFlags::PSH,
@@ -358,17 +395,13 @@ pub fn winsize(packet: &bytes::Bytes, new_window: u16) -> DesyncResult {
     // Меняем window size в TCP header
     let window_offset = ip.header_len + 14; // TCP window offset
     if window_offset + 2 <= buf.len() {
-        buf[window_offset..window_offset + 2]
-            .copy_from_slice(&new_window.to_be_bytes());
+        buf[window_offset..window_offset + 2].copy_from_slice(&new_window.to_be_bytes());
 
         // Пересчитываем TCP checksum
         let tcp_segment = &buf[ip.header_len..];
-        let new_checksum = crate::desync::tcp_checksum_v4(
-            ip.src, ip.dst, tcp_segment,
-        );
+        let new_checksum = crate::desync::tcp_checksum_v4(ip.src, ip.dst, tcp_segment);
         let csum_offset = ip.header_len + 16;
-        buf[csum_offset..csum_offset + 2]
-            .copy_from_slice(&new_checksum.to_be_bytes());
+        buf[csum_offset..csum_offset + 2].copy_from_slice(&new_checksum.to_be_bytes());
     }
 
     debug!("[Z9] WinSize: {} → {}", tcp.window, new_window);
@@ -404,7 +437,10 @@ pub fn synhide(packet: &bytes::Bytes, fake_ttl_offset: u8) -> DesyncResult {
     // Второй пакет: PSH+ACK с данными, но без SYN flag
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let inject_pkt = build_tcp_segment(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
         tcp.sequence.wrapping_add(1),
         tcp.acknowledgment,
         TcpFlags::PSH | TcpFlags::ACK,
@@ -426,11 +462,7 @@ pub fn synhide(packet: &bytes::Bytes, fake_ttl_offset: u8) -> DesyncResult {
 /// DPI видит fake SNI первым (самый ранний по SEQ). Сервер
 /// получает fake CH с TTL-1 (не доходит) и реальный CH с
 /// нормальным TTL (доходит).
-pub fn fake_sni(
-    packet: &bytes::Bytes,
-    fake_sni_str: &str,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn fake_sni(packet: &bytes::Bytes, fake_sni_str: &str, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -453,7 +485,10 @@ pub fn fake_sni(
     // Используем SEQ = tcp.sequence (перед реальными данными)
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_pkt = build_tcp_segment(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
         tcp.sequence,
         tcp.acknowledgment,
         TcpFlags::PSH | TcpFlags::ACK,
@@ -463,8 +498,12 @@ pub fn fake_sni(
         generate_identification(ip.identification, 0),
     );
 
-    debug!("[03] FakeSni: inject fake CH '{}' ({} bytes) before real data ({} bytes)",
-        fake_sni_str, fake_payload.len(), tcp.payload.len());
+    debug!(
+        "[03] FakeSni: inject fake CH '{}' ({} bytes) before real data ({} bytes)",
+        fake_sni_str,
+        fake_payload.len(),
+        tcp.payload.len()
+    );
 
     DesyncResult::inject_only(fake_pkt)
 }
@@ -530,7 +569,10 @@ pub fn oob_injection(
 
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_pkt = build_tcp_segment(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
         tcp.sequence,
         tcp.acknowledgment,
         TcpFlags::URG | TcpFlags::PSH | TcpFlags::ACK,
@@ -559,10 +601,17 @@ pub fn oob_injection(
 /// Строит полный IP+TCP пакет — одна аллокация вместо трёх.
 #[allow(clippy::too_many_arguments)]
 fn build_ip_tcp_packet(
-    src_ip: Ipv4Addr, dst_ip: Ipv4Addr,
-    src_port: u16, dst_port: u16,
-    seq: u32, ack: u32, flags: u8, window: u16,
-    payload: &[u8], ttl: u8, identification: u16,
+    src_ip: Ipv4Addr,
+    dst_ip: Ipv4Addr,
+    src_port: u16,
+    dst_port: u16,
+    seq: u32,
+    ack: u32,
+    flags: u8,
+    window: u16,
+    payload: &[u8],
+    ttl: u8,
+    identification: u16,
 ) -> bytes::Bytes {
     let tcp_header_len = 20;
     let total_len = 20 + tcp_header_len + payload.len();
@@ -612,7 +661,9 @@ fn build_full_tcp_packet(
     payload: &[u8],
     ttl: u8,
 ) -> bytes::Bytes {
-    build_ip_tcp_packet(src_ip, dst_ip, src_port, dst_port, seq, ack, flags, window, payload, ttl, 0)
+    build_ip_tcp_packet(
+        src_ip, dst_ip, src_port, dst_port, seq, ack, flags, window, payload, ttl, 0,
+    )
 }
 
 /// Строит TCP сегмент — одна аллокация.
@@ -630,7 +681,19 @@ fn build_tcp_segment(
     ttl: u8,
     identification: u16,
 ) -> bytes::Bytes {
-    build_ip_tcp_packet(src_ip, dst_ip, src_port, dst_port, seq, ack, flags, window, payload, ttl, identification)
+    build_ip_tcp_packet(
+        src_ip,
+        dst_ip,
+        src_port,
+        dst_port,
+        seq,
+        ack,
+        flags,
+        window,
+        payload,
+        ttl,
+        identification,
+    )
 }
 
 /// Строит минимальный fake TLS ClientHello с указанным SNI.
@@ -664,7 +727,8 @@ pub fn build_fake_clienthello(sni: &str) -> bytes::Bytes {
     // Version(2) + Random(32) + SessionID_len(1) + SessionID(32) +
     // CipherSuites_len(2) + CipherSuites(2) + Compression_len(1) + Compression(1) +
     // Extensions_len(2) + Extensions
-    let ch_body_len: u16 = (2 + 32 + 1) + 2 + cipher_suites_len + 1 + compression.len() as u16 + 2 + ext_total_len;
+    let ch_body_len: u16 =
+        (2 + 32 + 1) + 2 + cipher_suites_len + 1 + compression.len() as u16 + 2 + ext_total_len;
 
     // Handshake header: MsgType(1) + Length(3)
     let hs_len: u32 = ch_body_len as u32;
@@ -738,10 +802,7 @@ fn generate_identification(base: u16, index: usize) -> u16 {
 /// DPI фиксирует соединение. Затем отправляем данные через
 /// уже установленное соединение. DPI может не инспектировать
 /// данные в уже установленном потоке.
-pub fn tcp_preopen(
-    packet: &bytes::Bytes,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn tcp_preopen(packet: &bytes::Bytes, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -760,8 +821,12 @@ pub fn tcp_preopen(
 
     // SYN без данных (preopen)
     let syn_only = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        tcp.sequence, 0,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        tcp.sequence,
+        0,
         TcpFlags::SYN,
         tcp.window,
         &[],
@@ -771,7 +836,10 @@ pub fn tcp_preopen(
 
     // ACK после SYN-ACK (отправим через delay)
     let ack_seg = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
         tcp.sequence.wrapping_add(1),
         0,
         TcpFlags::ACK,
@@ -792,11 +860,7 @@ pub fn tcp_preopen(
 /// Устанавливаем MSS=536 в TCP опции SYN. Сервер ограничен
 /// размером сегмента 536 байт. DPI должен собирать больше
 /// сегментов для анализа ClientHello. Это затрудняет DPI.
-pub fn mss_clamp(
-    packet: &bytes::Bytes,
-    mss_value: u16,
-    _fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn mss_clamp(packet: &bytes::Bytes, mss_value: u16, _fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -850,12 +914,9 @@ pub fn mss_clamp(
             buf[tcp_start + 16] = 0;
             buf[tcp_start + 17] = 0;
         }
-        let tcp_csum = crate::desync::tcp_checksum_v4(
-            src_ip, dst_ip,
-            &buf[tcp_start..tcp_start + tcp_len],
-        );
-        buf[tcp_start + 16..tcp_start + 18]
-            .copy_from_slice(&tcp_csum.to_be_bytes());
+        let tcp_csum =
+            crate::desync::tcp_checksum_v4(src_ip, dst_ip, &buf[tcp_start..tcp_start + tcp_len]);
+        buf[tcp_start + 16..tcp_start + 18].copy_from_slice(&tcp_csum.to_be_bytes());
     }
 
     debug!("[W2] MssClamp: MSS={}", mss_value);
@@ -893,8 +954,12 @@ pub fn ack_suppress(
     // Отправляем fake RST вместо ACK (с TTL-1)
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_rst = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        tcp.sequence, tcp.acknowledgment,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        tcp.sequence,
+        tcp.acknowledgment,
         TcpFlags::RST | TcpFlags::ACK,
         0,
         &[],
@@ -902,8 +967,10 @@ pub fn ack_suppress(
         ip.identification.wrapping_add(1),
     );
 
-    debug!("[W3] AckSuppress: {} fake RSTs + suppress real ACK",
-        delay_segments);
+    debug!(
+        "[W3] AckSuppress: {} fake RSTs + suppress real ACK",
+        delay_segments
+    );
 
     DesyncResult::modify_and_inject(packet.to_vec(), fake_rst)
 }
@@ -913,10 +980,7 @@ pub fn ack_suppress(
 /// ## Принцип
 /// Буферизуем и отправляем TCP сегменты вперемешку.
 /// DPI может потерять sync с потоком при reordered пакетах.
-pub fn pkt_reorder(
-    packet: &bytes::Bytes,
-    swap_with_next: bool,
-) -> DesyncResult {
+pub fn pkt_reorder(packet: &bytes::Bytes, swap_with_next: bool) -> DesyncResult {
     if !swap_with_next {
         return DesyncResult::passthrough();
     }
@@ -947,20 +1011,30 @@ pub fn pkt_reorder(
 
     // Part2 отправляется первой (reordered)
     let seg2 = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        seq.wrapping_add(split as u32), ack,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        seq.wrapping_add(split as u32),
+        ack,
         TcpFlags::PSH | TcpFlags::ACK,
-        window, part2,
+        window,
+        part2,
         ip.ttl,
         generate_identification(ip.identification, 0),
     );
 
     // Part1 отправляется второй
     let seg1 = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        seq, ack,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        seq,
+        ack,
         TcpFlags::PSH | TcpFlags::ACK,
-        window, part1,
+        window,
+        part1,
         ip.ttl,
         generate_identification(ip.identification, 1),
     );
@@ -976,10 +1050,7 @@ pub fn pkt_reorder(
 /// Между SYN-ACK и отправкой ClientHello отправляем RST+ACK
 /// с TTL-1. DPI видит RST и сбрасывает состояние соединения.
 /// Сервер игнорирует RST с неверным SEQ (не совпадает с его ISN).
-pub fn rst_selective(
-    packet: &bytes::Bytes,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn rst_selective(packet: &bytes::Bytes, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -992,19 +1063,25 @@ pub fn rst_selective(
     };
 
     // Только для SYN-ACK
-    if tcp.flags & TcpFlags::SYN == 0 || tcp.flags & TcpFlags::ACK == 0
-        || tcp.flags & TcpFlags::RST != 0 {
+    if tcp.flags & TcpFlags::SYN == 0
+        || tcp.flags & TcpFlags::ACK == 0
+        || tcp.flags & TcpFlags::RST != 0
+    {
         return DesyncResult::passthrough();
     }
 
     // Fake RST+ACK с fake TTL
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_rst = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        tcp.acknowledgment, // SEQ = ACK number (server's ISN + 1)
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        tcp.acknowledgment,           // SEQ = ACK number (server's ISN + 1)
         tcp.sequence.wrapping_add(1), // ACK = server SEQ + 1
         TcpFlags::RST | TcpFlags::ACK,
-        0, &[],
+        0,
+        &[],
         fake_ttl,
         ip.identification.wrapping_add(1),
     );
@@ -1046,7 +1123,10 @@ pub fn syn_flood_decoy(
     for i in 0..decoy_count {
         let fake_ch = build_fake_clienthello(fake_sni);
         let decoy_syn = build_tcp_segment_p3(
-            ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+            ip.src,
+            ip.dst,
+            tcp.src_port,
+            tcp.dst_port,
             tcp.sequence.wrapping_add((i as u32 + 1) * 1000), // разные SEQ
             0,
             TcpFlags::SYN | TcpFlags::PSH,
@@ -1098,8 +1178,7 @@ pub fn win_scale_manip(
     // Меняем window size
     let window_offset = tcp_start + 14;
     if window_offset + 2 <= buf.len() {
-        buf[window_offset..window_offset + 2]
-            .copy_from_slice(&new_window.to_be_bytes());
+        buf[window_offset..window_offset + 2].copy_from_slice(&new_window.to_be_bytes());
     }
 
     // Вставляем Window Scale option
@@ -1132,11 +1211,7 @@ pub fn win_scale_manip(
 /// Разделяем данные на 2 сегмента. Второй отправляем с TTL-1.
 /// DPI видит сегменты в неправильном порядке. Сервер собирает
 /// по SEQ нормально.
-pub fn disorder(
-    packet: &bytes::Bytes,
-    split_at: usize,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn disorder(packet: &bytes::Bytes, split_at: usize, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -1159,9 +1234,14 @@ pub fn disorder(
     // Сегмент 2 (отправляем первым, с TTL-1)
     let seg2_payload = &tcp.payload[split_at..];
     let seg2 = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        seq.wrapping_add(split_at as u32), ack,
-        TcpFlags::PSH | TcpFlags::ACK, window,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        seq.wrapping_add(split_at as u32),
+        ack,
+        TcpFlags::PSH | TcpFlags::ACK,
+        window,
         seg2_payload,
         ip.ttl.saturating_sub(fake_ttl_offset),
         generate_identification(ip.identification, 0),
@@ -1170,16 +1250,25 @@ pub fn disorder(
     // Сегмент 1 (отправляем вторым, нормальный TTL)
     let seg1_payload = &tcp.payload[..split_at];
     let modified = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        seq, ack,
-        TcpFlags::PSH | TcpFlags::ACK, window,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        seq,
+        ack,
+        TcpFlags::PSH | TcpFlags::ACK,
+        window,
         seg1_payload,
         ip.ttl,
         generate_identification(ip.identification, 1),
     );
 
-    debug!("[RP3] Disorder: split at {}, {}+{} bytes",
-        split_at, seg1_payload.len(), seg2_payload.len());
+    debug!(
+        "[RP3] Disorder: split at {}, {}+{} bytes",
+        split_at,
+        seg1_payload.len(),
+        seg2_payload.len()
+    );
 
     DesyncResult {
         modified: Some(bytes::Bytes::from(modified)),
@@ -1224,16 +1313,23 @@ pub fn multidisorder_new(
             start + seg_size
         };
         let payload = &tcp.payload[start..end];
-        let ttl = if i == 0 { ip.ttl } else {
+        let ttl = if i == 0 {
+            ip.ttl
+        } else {
             ip.ttl.saturating_sub(fake_ttl_offset)
         };
 
         let seg = build_tcp_segment_p3(
-            ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+            ip.src,
+            ip.dst,
+            tcp.src_port,
+            tcp.dst_port,
             tcp.sequence.wrapping_add(start as u32),
             tcp.acknowledgment,
             TcpFlags::PSH | TcpFlags::ACK,
-            tcp.window, payload, ttl,
+            tcp.window,
+            payload,
+            ttl,
             generate_identification(ip.identification, i),
         );
         segments.push(seg);
@@ -1259,10 +1355,7 @@ pub fn multidisorder_new(
 /// ## Принцип
 /// Отправляем данные с URG+PSH флагами + reorder.
 /// DPI может потерять sync при неожиданных OOB данных.
-pub fn disoob(
-    packet: &bytes::Bytes,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn disoob(packet: &bytes::Bytes, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -1283,7 +1376,10 @@ pub fn disoob(
 
     // OOB сегмент (URG+PSH) с reordered данными
     let oob_seg = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
         tcp.sequence.wrapping_add(split as u32),
         tcp.acknowledgment,
         TcpFlags::URG | TcpFlags::PSH | TcpFlags::ACK,
@@ -1295,8 +1391,12 @@ pub fn disoob(
 
     // Normal сегмент
     let modified = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        tcp.sequence, tcp.acknowledgment,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        tcp.sequence,
+        tcp.acknowledgment,
         TcpFlags::PSH | TcpFlags::ACK,
         tcp.window,
         &tcp.payload[..split],
@@ -1314,11 +1414,7 @@ pub fn disoob(
 /// ## Принцип
 /// Аналогично FakeSni, но подменяем Host заголовок в HTTP.
 /// DPI видит HTTP запрос с поддельным Host.
-pub fn hostfake(
-    packet: &bytes::Bytes,
-    fake_host: &str,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn hostfake(packet: &bytes::Bytes, fake_host: &str, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -1339,8 +1435,12 @@ pub fn hostfake(
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
 
     let fake_seg = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        tcp.sequence, tcp.acknowledgment,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        tcp.sequence,
+        tcp.acknowledgment,
         TcpFlags::PSH | TcpFlags::ACK,
         tcp.window,
         &fake_http,
@@ -1358,10 +1458,7 @@ pub fn hostfake(
 /// ## Принцип
 /// Отправляем fake RST с TTL-1. DPI сбрасывает состояние
 /// соединения. Сервер игнорирует RST с неверным SEQ.
-pub fn fakerst(
-    packet: &bytes::Bytes,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn fakerst(packet: &bytes::Bytes, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -1377,11 +1474,15 @@ pub fn fakerst(
 
     // Fake RST с увеличенным SEQ (не совпадает с ожидаемым)
     let fake_rst = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
         tcp.sequence.wrapping_add(10000),
         tcp.acknowledgment,
         TcpFlags::RST,
-        0, &[],
+        0,
+        &[],
         fake_ttl,
         ip.identification.wrapping_add(1),
     );
@@ -1397,11 +1498,7 @@ pub fn fakerst(
 /// Отправляем каждый байт первого пакета как отдельный TCP сегмент.
 /// DPI должен собирать N сегментов для определения протокола.
 /// Сервер собирает по SEQ без проблем.
-pub fn byte_by_byte(
-    packet: &bytes::Bytes,
-    max_bytes: usize,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn byte_by_byte(packet: &bytes::Bytes, max_bytes: usize, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -1427,8 +1524,12 @@ pub fn byte_by_byte(
 
     for i in 0..byte_count {
         let byte_seg = build_tcp_segment_p3(
-            ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-            seq.wrapping_add(i as u32), ack,
+            ip.src,
+            ip.dst,
+            tcp.src_port,
+            tcp.dst_port,
+            seq.wrapping_add(i as u32),
+            ack,
             TcpFlags::PSH | TcpFlags::ACK,
             window,
             &tcp.payload[i..i + 1],
@@ -1440,8 +1541,12 @@ pub fn byte_by_byte(
 
     // Остаток payload — нормальный сегмент
     let modified = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        seq.wrapping_add(byte_count as u32), ack,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        seq.wrapping_add(byte_count as u32),
+        ack,
         TcpFlags::PSH | TcpFlags::ACK,
         window,
         &tcp.payload[byte_count..],
@@ -1449,8 +1554,11 @@ pub fn byte_by_byte(
         generate_identification(ip.identification, byte_count),
     );
 
-    debug!("[RN1] ByteByByte: {} bytes individually + {} remaining",
-        byte_count, tcp.payload.len() - byte_count);
+    debug!(
+        "[RN1] ByteByByte: {} bytes individually + {} remaining",
+        byte_count,
+        tcp.payload.len() - byte_count
+    );
 
     DesyncResult {
         modified: Some(bytes::Bytes::from(modified)),
@@ -1465,11 +1573,7 @@ pub fn byte_by_byte(
 /// Фрагментируем только исходящий трафик (клиент → сервер).
 /// Входящий трафик остаётся без фрагментации. DPI видит
 /// фрагментированный запрос и может не собрать его.
-pub fn unidir_frag(
-    packet: &bytes::Bytes,
-    frag_size: usize,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn unidir_frag(packet: &bytes::Bytes, frag_size: usize, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -1501,8 +1605,10 @@ pub fn unidir_frag(
         };
 
         let seg = build_tcp_segment_p3(
-            ip.src, ip.dst,
-            tcp.src_port, tcp.dst_port,
+            ip.src,
+            ip.dst,
+            tcp.src_port,
+            tcp.dst_port,
             tcp.sequence.wrapping_add(pos as u32),
             tcp.acknowledgment,
             TcpFlags::PSH | TcpFlags::ACK,
@@ -1526,9 +1632,7 @@ pub fn unidir_frag(
 /// ## Принцип
 /// Меняем source port в каждом пакете. DPI может классифицировать
 /// трафик по source port. Ротация сбивает классификацию.
-pub fn port_shuffle(
-    packet: &bytes::Bytes,
-) -> DesyncResult {
+pub fn port_shuffle(packet: &bytes::Bytes) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -1558,12 +1662,9 @@ pub fn port_shuffle(
         buf[tcp_start + 16] = 0;
         buf[tcp_start + 17] = 0;
     }
-    let tcp_csum = crate::desync::tcp_checksum_v4(
-        src_ip, dst_ip,
-        &buf[tcp_start..tcp_start + tcp_len],
-    );
-    buf[tcp_start + 16..tcp_start + 18]
-        .copy_from_slice(&tcp_csum.to_be_bytes());
+    let tcp_csum =
+        crate::desync::tcp_checksum_v4(src_ip, dst_ip, &buf[tcp_start..tcp_start + tcp_len]);
+    buf[tcp_start + 16..tcp_start + 18].copy_from_slice(&tcp_csum.to_be_bytes());
 
     debug!("[CT8] PortShuffle: {} → {}", tcp.src_port, new_port);
 
@@ -1575,10 +1676,7 @@ pub fn port_shuffle(
 /// ## Принцип
 /// Уменьшаем TCP window size + отключаем SACK.
 /// DPI может не справиться с мелкими сегментами без SACK.
-pub fn wclamp(
-    packet: &bytes::Bytes,
-    new_window: u16,
-) -> DesyncResult {
+pub fn wclamp(packet: &bytes::Bytes, new_window: u16) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -1590,8 +1688,7 @@ pub fn wclamp(
     // Устанавливаем новый window size
     let window_offset = tcp_start + 14;
     if window_offset + 2 <= buf.len() {
-        buf[window_offset..window_offset + 2]
-            .copy_from_slice(&new_window.to_be_bytes());
+        buf[window_offset..window_offset + 2].copy_from_slice(&new_window.to_be_bytes());
     }
 
     // Удаляем SACK permitted option (kind=4, length=2)
@@ -1600,10 +1697,14 @@ pub fn wclamp(
         let kind = buf[i];
         match kind {
             0 => break,
-            1 => { i += 1; }
+            1 => {
+                i += 1;
+            }
             _ => {
                 let len = buf[i + 1] as usize;
-                if len < 2 { break; }
+                if len < 2 {
+                    break;
+                }
                 if kind == 4 && len == 2 {
                     buf.drain(i..i + len);
                 } else {
@@ -1627,12 +1728,9 @@ pub fn wclamp(
         buf[tcp_start + 16] = 0;
         buf[tcp_start + 17] = 0;
     }
-    let tcp_csum = crate::desync::tcp_checksum_v4(
-        src_ip, dst_ip,
-        &buf[tcp_start..tcp_start + tcp_len],
-    );
-    buf[tcp_start + 16..tcp_start + 18]
-        .copy_from_slice(&tcp_csum.to_be_bytes());
+    let tcp_csum =
+        crate::desync::tcp_checksum_v4(src_ip, dst_ip, &buf[tcp_start..tcp_start + tcp_len]);
+    buf[tcp_start + 16..tcp_start + 18].copy_from_slice(&tcp_csum.to_be_bytes());
 
     debug!("[RP14] Wclamp: window={}, SACK removed", new_window);
 
@@ -1644,10 +1742,7 @@ pub fn wclamp(
 /// ## Принцип
 /// Модифицируем TCP Timestamp опцию (kind=8). DPI может использовать
 /// timestamp для fingerprinting. Случайное значение сбивает fingerprint.
-pub fn ts_md5(
-    packet: &bytes::Bytes,
-    _fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn ts_md5(packet: &bytes::Bytes, _fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -1667,11 +1762,16 @@ pub fn ts_md5(
     let ts_val = crate::desync::rand::random_u32();
     let ts_ecr = 0u32;
     let ts_option: [u8; 10] = [
-        0x08, 0x0A,
-        (ts_val >> 24) as u8, (ts_val >> 16) as u8,
-        (ts_val >> 8) as u8, ts_val as u8,
-        (ts_ecr >> 24) as u8, (ts_ecr >> 16) as u8,
-        (ts_ecr >> 8) as u8, ts_ecr as u8,
+        0x08,
+        0x0A,
+        (ts_val >> 24) as u8,
+        (ts_val >> 16) as u8,
+        (ts_val >> 8) as u8,
+        ts_val as u8,
+        (ts_ecr >> 24) as u8,
+        (ts_ecr >> 16) as u8,
+        (ts_ecr >> 8) as u8,
+        ts_ecr as u8,
     ];
 
     let insert_pos = tcp_start + 20;
@@ -1695,12 +1795,9 @@ pub fn ts_md5(
         let tcp_len = buf.len() - tcp_start;
         buf[tcp_start + 16] = 0;
         buf[tcp_start + 17] = 0;
-        let tcp_csum = crate::desync::tcp_checksum_v4(
-            ip.src, ip.dst,
-            &buf[tcp_start..tcp_start + tcp_len],
-        );
-        buf[tcp_start + 16..tcp_start + 18]
-            .copy_from_slice(&tcp_csum.to_be_bytes());
+        let tcp_csum =
+            crate::desync::tcp_checksum_v4(ip.src, ip.dst, &buf[tcp_start..tcp_start + tcp_len]);
+        buf[tcp_start + 16..tcp_start + 18].copy_from_slice(&tcp_csum.to_be_bytes());
     }
 
     debug!("[RP13] TsMd5: TSval={:#x}", ts_val);
@@ -1725,7 +1822,19 @@ fn build_tcp_segment_p3(
     ttl: u8,
     identification: u16,
 ) -> bytes::Bytes {
-    build_ip_tcp_packet(src_ip, dst_ip, src_port, dst_port, seq, ack, flags, window, payload, ttl, identification)
+    build_ip_tcp_packet(
+        src_ip,
+        dst_ip,
+        src_port,
+        dst_port,
+        seq,
+        ack,
+        flags,
+        window,
+        payload,
+        ttl,
+        identification,
+    )
 }
 
 /// Строит fake HTTP запрос для HostFake.
@@ -1749,7 +1858,7 @@ mod tests {
         pkt[0] = 0x45;
         pkt[2..4].copy_from_slice(&40u16.to_be_bytes());
         pkt[8] = 64; // TTL
-        pkt[9] = 6;  // TCP
+        pkt[9] = 6; // TCP
         pkt[12..16].copy_from_slice(&[192, 168, 1, 1]);
         pkt[16..20].copy_from_slice(&[8, 8, 8, 8]);
         // TCP header
@@ -1759,7 +1868,7 @@ mod tests {
         pkt[32] = 0x50; // data offset = 5
         pkt[33] = TcpFlags::SYN; // flags
         pkt[34..36].copy_from_slice(&65535u16.to_be_bytes()); // window
-        // IP checksum
+                                                              // IP checksum
         let csum = crate::desync::ipv4_checksum(&pkt[..20]);
         pkt[10..12].copy_from_slice(&csum.to_be_bytes());
         bytes::Bytes::from(pkt)
@@ -1890,9 +1999,15 @@ mod tests {
         let seg = build_tcp_segment_p3(
             Ipv4Addr::new(192, 168, 1, 1),
             Ipv4Addr::new(8, 8, 8, 8),
-            12345, 443, 1000, 0,
-            TcpFlags::SYN, 65535, &[],
-            64, 1,
+            12345,
+            443,
+            1000,
+            0,
+            TcpFlags::SYN,
+            65535,
+            &[],
+            64,
+            1,
         );
         assert_eq!(seg.len(), 40); // IP(20) + TCP(20)
         assert_eq!(seg[0] >> 4, 4);
@@ -1975,8 +2090,12 @@ pub fn host_fake_split(
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
 
     let fake_seg = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        tcp.sequence, tcp.acknowledgment,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        tcp.sequence,
+        tcp.acknowledgment,
         TcpFlags::PSH | TcpFlags::ACK,
         tcp.window,
         &fake_payload,
@@ -2010,8 +2129,12 @@ pub fn fake_data_disorder(
     let fake_ttl = 1u8.max(ip.ttl.saturating_sub(fake_ttl_offset));
 
     let fake_seg = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        tcp.sequence, tcp.acknowledgment,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        tcp.sequence,
+        tcp.acknowledgment,
         TcpFlags::PSH | TcpFlags::ACK,
         tcp.window,
         fake_data,
@@ -2043,16 +2166,30 @@ pub fn syn_ack_split(packet: &[u8]) -> DesyncResult {
     }
 
     let syn_seg = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        tcp.sequence, 0, TcpFlags::SYN,
-        tcp.window, &[], ip.ttl,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        tcp.sequence,
+        0,
+        TcpFlags::SYN,
+        tcp.window,
+        &[],
+        ip.ttl,
         generate_identification(ip.identification, 0),
     );
 
     let ack_seg = build_tcp_segment_p3(
-        ip.src, ip.dst, tcp.src_port, tcp.dst_port,
-        tcp.sequence.wrapping_add(1), tcp.acknowledgment.wrapping_add(1), TcpFlags::ACK,
-        tcp.window, &[], ip.ttl,
+        ip.src,
+        ip.dst,
+        tcp.src_port,
+        tcp.dst_port,
+        tcp.sequence.wrapping_add(1),
+        tcp.acknowledgment.wrapping_add(1),
+        TcpFlags::ACK,
+        tcp.window,
+        &[],
+        ip.ttl,
         generate_identification(ip.identification, 1),
     );
 

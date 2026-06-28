@@ -13,7 +13,7 @@
 //! Адаптировано из [zapret](https://github.com/bol-van/zapret) и
 //! [offveil](https://github.com/nickel-org/offveil).
 
-use crate::desync::{parse_ip_header, DesyncResult, ipv4_checksum};
+use crate::desync::{ipv4_checksum, parse_ip_header, DesyncResult};
 use pnet_packet::ip::IpNextHeaderProtocols;
 use pnet_packet::ipv4::MutableIpv4Packet;
 use pnet_packet::udp::MutableUdpPacket;
@@ -54,11 +54,7 @@ const QUIC_INITIAL_TYPE: u8 = 0xC0; // Fixed bit + Long Header + Initial
 /// Packet Number (1-4 bytes)
 /// Payload (encrypted)
 /// ```
-pub fn quic_initial_inject(
-    packet: &[u8],
-    fake_sni: &str,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn quic_initial_inject(packet: &[u8], fake_sni: &str, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -75,9 +71,7 @@ pub fn quic_initial_inject(
     }
 
     // Извлекаем Connection ID из оригинального пакета
-    let version = u32::from_be_bytes([
-        udp_data[1], udp_data[2], udp_data[3], udp_data[4],
-    ]);
+    let version = u32::from_be_bytes([udp_data[1], udp_data[2], udp_data[3], udp_data[4]]);
 
     if version == 0 {
         return DesyncResult::passthrough(); // Version negotiation
@@ -102,7 +96,8 @@ pub fn quic_initial_inject(
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_src_port = crate::desync::rand::random_range(1024, 65535) as u16;
     let fake_udp = build_udp_packet(
-        ip.src, ip.dst,
+        ip.src,
+        ip.dst,
         fake_src_port,
         443,
         &fake_payload,
@@ -110,8 +105,11 @@ pub fn quic_initial_inject(
         ip.identification.wrapping_add(1),
     );
 
-    debug!("[QUIC] Initial inject: fake '{}' ({} bytes)",
-        fake_sni, fake_payload.len());
+    debug!(
+        "[QUIC] Initial inject: fake '{}' ({} bytes)",
+        fake_sni,
+        fake_payload.len()
+    );
 
     DesyncResult::inject_only(fake_udp)
 }
@@ -121,10 +119,7 @@ pub fn quic_initial_inject(
 /// ## Принцип
 /// Отравление short header пакетов (0-RTT, 1-RTT) fake данными.
 /// DPI может потерять sync с QUIC потоком.
-pub fn quic_short_header_poison(
-    packet: &[u8],
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn quic_short_header_poison(packet: &[u8], fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -146,11 +141,17 @@ pub fn quic_short_header_poison(
 
     // Извлекаем source port из UDP
     let udp = pnet_packet::udp::UdpPacket::new(&packet[ip.header_len..]);
-    let src_port = udp.map(|u| u.get_source()).unwrap_or(crate::desync::rand::random_range(1024, 65535) as u16);
+    let src_port = udp
+        .map(|u| u.get_source())
+        .unwrap_or(crate::desync::rand::random_range(1024, 65535) as u16);
 
     let fake_udp = build_udp_packet(
-        ip.src, ip.dst, src_port, 443,
-        &fake_payload, fake_ttl,
+        ip.src,
+        ip.dst,
+        src_port,
+        443,
+        &fake_payload,
+        fake_ttl,
         ip.identification.wrapping_add(1),
     );
 
@@ -165,11 +166,7 @@ pub fn quic_short_header_poison(
 /// Отправляем несколько padding-only пакетов для переполнения
 /// conntrack DPI. QUIC padding пакеты не содержат полезных данных,
 /// но DPI должен их обрабатывать.
-pub fn quic_padding_flood(
-    packet: &[u8],
-    count: usize,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn quic_padding_flood(packet: &[u8], count: usize, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -181,13 +178,16 @@ pub fn quic_padding_flood(
         let mut rng = crate::desync::rand::PerConnRng::new(i as u64);
         let pad_size = (rng.next_unbiased(20) + 1) as usize;
         let mut fake_payload = vec![0u8; pad_size];
-        for byte in &mut fake_payload { *byte = rng.next_u64() as u8; }
+        for byte in &mut fake_payload {
+            *byte = rng.next_u64() as u8;
+        }
 
         let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
         let src_port = rng.next_range(1024, 65535) as u16;
         let ip_id = rng.next_u64() as u16;
         let fake_udp = build_udp_packet(
-            ip.src, ip.dst,
+            ip.src,
+            ip.dst,
             src_port,
             443,
             &fake_payload,
@@ -207,11 +207,7 @@ pub fn quic_padding_flood(
 /// ## Принцип
 /// Объединяем несколько маленьких UDP пакетов в один большой.
 /// DPI может не обработать коалесцированный пакет.
-pub fn udp_coalescing(
-    packet: &[u8],
-    extra_packets: &[&[u8]],
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn udp_coalescing(packet: &[u8], extra_packets: &[&[u8]], fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -233,15 +229,20 @@ pub fn udp_coalescing(
 
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let combined_udp = build_udp_packet(
-        ip.src, ip.dst,
-        crate::desync::rand::random_range(1024, 65535) as u16, 443,
+        ip.src,
+        ip.dst,
+        crate::desync::rand::random_range(1024, 65535) as u16,
+        443,
         &combined,
         fake_ttl,
         ip.identification.wrapping_add(1),
     );
 
-    debug!("[QUIC] UDP coalescing: {} packets → {} bytes",
-        extra_packets.len() + 1, combined.len());
+    debug!(
+        "[QUIC] UDP coalescing: {} packets → {} bytes",
+        extra_packets.len() + 1,
+        combined.len()
+    );
 
     DesyncResult::inject_only(combined_udp)
 }
@@ -251,10 +252,7 @@ pub fn udp_coalescing(
 /// ## Принцип
 /// Отправляем пакет с GREASE версией (0x?a?a?a?a). DPI может
 /// не распознать QUIC и пропустить пакет.
-pub fn doppelganger_grease(
-    packet: &[u8],
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn doppelganger_grease(packet: &[u8], fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -269,8 +267,12 @@ pub fn doppelganger_grease(
 
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_udp = build_udp_packet(
-        ip.src, ip.dst, crate::desync::rand::random_range(1024, 65535) as u16, 443,
-        &fake_payload, fake_ttl,
+        ip.src,
+        ip.dst,
+        crate::desync::rand::random_range(1024, 65535) as u16,
+        443,
+        &fake_payload,
+        fake_ttl,
         ip.identification.wrapping_add(1),
     );
 
@@ -317,9 +319,7 @@ pub fn quic_long_header_drop(packet: &[u8]) -> DesyncResult {
 /// ## Принцип
 /// Нормализуем QUIC Initial пакет: убираем GREASE, исправляем
 /// version, чистим padding. DPI может сбиться на аномальных пакетах.
-pub fn quic_normalizer(
-    packet: &[u8],
-) -> DesyncResult {
+pub fn quic_normalizer(packet: &[u8]) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -335,16 +335,13 @@ pub fn quic_normalizer(
         return DesyncResult::passthrough();
     }
 
-    let version = u32::from_be_bytes([
-        udp_data[1], udp_data[2], udp_data[3], udp_data[4],
-    ]);
+    let version = u32::from_be_bytes([udp_data[1], udp_data[2], udp_data[3], udp_data[4]]);
 
     // Нормализуем GREASE версию на Version 1
     if (version & 0x0a0a_0a0a) == 0x0a0a_0a0a {
         let mut modified = packet.to_vec();
         let version_offset = ip.header_len + 8 + 1; // +1 for first byte
-        modified[version_offset..version_offset + 4]
-            .copy_from_slice(&QUIC_VERSION_1.to_be_bytes());
+        modified[version_offset..version_offset + 4].copy_from_slice(&QUIC_VERSION_1.to_be_bytes());
 
         // Пересчитываем IP checksum
         let checksum = ipv4_checksum(&modified[..20]);
@@ -413,9 +410,7 @@ pub fn quic_version_downgrade(
         return DesyncResult::passthrough();
     }
 
-    let version = u32::from_be_bytes([
-        udp_data[1], udp_data[2], udp_data[3], udp_data[4],
-    ]);
+    let version = u32::from_be_bytes([udp_data[1], udp_data[2], udp_data[3], udp_data[4]]);
 
     if version == 0 || version == fake_version {
         return DesyncResult::passthrough();
@@ -426,7 +421,7 @@ pub fn quic_version_downgrade(
     fake_payload.push(0xFF); // Header Form + Fixed Bit + Long Packet Type (0x3F = VN)
     fake_payload.extend_from_slice(&fake_version.to_be_bytes()); // fake version
     fake_payload.push(0x08); // DCID length
-    // Copy DCID from original
+                             // Copy DCID from original
     let dcid_start = 6;
     if dcid_start + 8 <= udp_data.len() {
         fake_payload.extend_from_slice(&udp_data[dcid_start..dcid_start + 8]);
@@ -439,12 +434,19 @@ pub fn quic_version_downgrade(
 
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_udp = build_udp_packet(
-        ip.src, ip.dst, crate::desync::rand::random_range(1024, 65535) as u16, 443,
-        &fake_payload, fake_ttl,
+        ip.src,
+        ip.dst,
+        crate::desync::rand::random_range(1024, 65535) as u16,
+        443,
+        &fake_payload,
+        fake_ttl,
         ip.identification.wrapping_add(1),
     );
 
-    debug!("[Z21] QUIC VersionDowngrade: fake version={:#x}", fake_version);
+    debug!(
+        "[Z21] QUIC VersionDowngrade: fake version={:#x}",
+        fake_version
+    );
 
     DesyncResult::inject_only(fake_udp)
 }
@@ -455,10 +457,7 @@ pub fn quic_version_downgrade(
 /// Отправляем fake Retry пакет с невалидным токеном.
 /// Клиент должен повторить handshake с токеном. DPI
 /// может сбиться при обработке Retry.
-pub fn quic_retry_inject(
-    packet: &[u8],
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn quic_retry_inject(packet: &[u8], fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -469,9 +468,7 @@ pub fn quic_retry_inject(
         return DesyncResult::passthrough();
     }
 
-    let version = u32::from_be_bytes([
-        udp_data[1], udp_data[2], udp_data[3], udp_data[4],
-    ]);
+    let version = u32::from_be_bytes([udp_data[1], udp_data[2], udp_data[3], udp_data[4]]);
 
     if version == 0 {
         return DesyncResult::passthrough();
@@ -483,7 +480,11 @@ pub fn quic_retry_inject(
     fake_payload.extend_from_slice(&version.to_be_bytes());
 
     let dcid_start = 6;
-    let dcid_len = if dcid_start < udp_data.len() { udp_data[dcid_start] as usize } else { 0 };
+    let dcid_len = if dcid_start < udp_data.len() {
+        udp_data[dcid_start] as usize
+    } else {
+        0
+    };
     if dcid_start + 1 + dcid_len <= udp_data.len() {
         fake_payload.push(dcid_len as u8);
         fake_payload.extend_from_slice(&udp_data[dcid_start + 1..dcid_start + 1 + dcid_len]);
@@ -503,8 +504,12 @@ pub fn quic_retry_inject(
 
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_udp = build_udp_packet(
-        ip.src, ip.dst, 443, crate::desync::rand::random_range(1024, 65535) as u16,
-        &fake_payload, fake_ttl,
+        ip.src,
+        ip.dst,
+        443,
+        crate::desync::rand::random_range(1024, 65535) as u16,
+        &fake_payload,
+        fake_ttl,
         ip.identification.wrapping_add(1),
     );
 
@@ -519,11 +524,7 @@ pub fn quic_retry_inject(
 /// Отправляем fake CONNECTION_CLOSE frame. DPI видит
 /// закрытие соединения и может перестать инспектировать.
 /// Клиент создаст новое соединение.
-pub fn quic_connection_close(
-    packet: &[u8],
-    error_code: u64,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn quic_connection_close(packet: &[u8], error_code: u64, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -534,9 +535,7 @@ pub fn quic_connection_close(
         return DesyncResult::passthrough();
     }
 
-    let version = u32::from_be_bytes([
-        udp_data[1], udp_data[2], udp_data[3], udp_data[4],
-    ]);
+    let version = u32::from_be_bytes([udp_data[1], udp_data[2], udp_data[3], udp_data[4]]);
 
     if version == 0 {
         return DesyncResult::passthrough();
@@ -545,7 +544,7 @@ pub fn quic_connection_close(
     // CONNECTION_CLOSE frame: type=0x1C, error_code(varint), frame_type(varint)
     let mut frame = Vec::with_capacity(20);
     frame.push(0x1C); // CONNECTION_CLOSE frame type
-    // error_code as varint (simple encoding)
+                      // error_code as varint (simple encoding)
     if error_code < 64 {
         frame.push(error_code as u8);
     } else {
@@ -563,7 +562,11 @@ pub fn quic_connection_close(
     initial.push(QUIC_INITIAL_TYPE);
     initial.extend_from_slice(&version.to_be_bytes());
 
-    let dcid_len = if dcid_start < udp_data.len() { udp_data[dcid_start] as usize } else { 0 };
+    let dcid_len = if dcid_start < udp_data.len() {
+        udp_data[dcid_start] as usize
+    } else {
+        0
+    };
     initial.push(dcid_len as u8);
     if dcid_start + 1 + dcid_len <= udp_data.len() {
         initial.extend_from_slice(&udp_data[dcid_start + 1..dcid_start + 1 + dcid_len]);
@@ -590,8 +593,12 @@ pub fn quic_connection_close(
 
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_udp = build_udp_packet(
-        ip.src, ip.dst, crate::desync::rand::random_range(1024, 65535) as u16, 443,
-        &initial, fake_ttl,
+        ip.src,
+        ip.dst,
+        crate::desync::rand::random_range(1024, 65535) as u16,
+        443,
+        &initial,
+        fake_ttl,
         ip.identification.wrapping_add(1),
     );
 
@@ -605,10 +612,7 @@ pub fn quic_connection_close(
 /// ## Принцип
 /// Отправляем fake RESET_STREAM frame для stream 0.
 /// DPI видит сброс потока и может перестать инспектировать.
-pub fn quic_stream_reset(
-    packet: &[u8],
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn quic_stream_reset(packet: &[u8], fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -619,9 +623,7 @@ pub fn quic_stream_reset(
         return DesyncResult::passthrough();
     }
 
-    let version = u32::from_be_bytes([
-        udp_data[1], udp_data[2], udp_data[3], udp_data[4],
-    ]);
+    let version = u32::from_be_bytes([udp_data[1], udp_data[2], udp_data[3], udp_data[4]]);
 
     if version == 0 {
         return DesyncResult::passthrough();
@@ -637,15 +639,19 @@ pub fn quic_stream_reset(
     // Wrap in 1-RTT packet (Short Header)
     let mut short = Vec::with_capacity(20);
     short.push(0x40); // Short Header: Fixed bit=1, spin=0
-    // Use random packet number
+                      // Use random packet number
     short.push(crate::desync::rand::random_u32() as u8);
     short.extend_from_slice(&frame);
     short.resize(short.len() + 8, 0); // padding
 
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_udp = build_udp_packet(
-        ip.src, ip.dst, crate::desync::rand::random_range(1024, 65535) as u16, 443,
-        &short, fake_ttl,
+        ip.src,
+        ip.dst,
+        crate::desync::rand::random_range(1024, 65535) as u16,
+        443,
+        &short,
+        fake_ttl,
         ip.identification.wrapping_add(1),
     );
 
@@ -660,11 +666,7 @@ pub fn quic_stream_reset(
 /// Отправляем MAX_STREAMS frame с large value.
 /// DPI должен обновить лимит потоков. Это может
 /// переполнить state machine DPI.
-pub fn quic_max_streams(
-    packet: &[u8],
-    max_streams: u32,
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn quic_max_streams(packet: &[u8], max_streams: u32, fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -675,9 +677,7 @@ pub fn quic_max_streams(
         return DesyncResult::passthrough();
     }
 
-    let version = u32::from_be_bytes([
-        udp_data[1], udp_data[2], udp_data[3], udp_data[4],
-    ]);
+    let version = u32::from_be_bytes([udp_data[1], udp_data[2], udp_data[3], udp_data[4]]);
 
     if version == 0 {
         return DesyncResult::passthrough();
@@ -686,7 +686,7 @@ pub fn quic_max_streams(
     // MAX_STREAMS frame: type=0x12 (bidi), count as varint
     let mut frame = Vec::with_capacity(5);
     frame.push(0x12); // MAX_STREAMS type
-    // max_streams as varint
+                      // max_streams as varint
     if max_streams < 64 {
         frame.push(max_streams as u8);
     } else {
@@ -699,7 +699,11 @@ pub fn quic_max_streams(
     initial.push(QUIC_INITIAL_TYPE);
     initial.extend_from_slice(&version.to_be_bytes());
     let dcid_start = 6;
-    let dcid_len = if dcid_start < udp_data.len() { udp_data[dcid_start] as usize } else { 0 };
+    let dcid_len = if dcid_start < udp_data.len() {
+        udp_data[dcid_start] as usize
+    } else {
+        0
+    };
     initial.push(dcid_len as u8);
     if dcid_start + 1 + dcid_len <= udp_data.len() {
         initial.extend_from_slice(&udp_data[dcid_start + 1..dcid_start + 1 + dcid_len]);
@@ -718,8 +722,12 @@ pub fn quic_max_streams(
 
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_udp = build_udp_packet(
-        ip.src, ip.dst, crate::desync::rand::random_range(1024, 65535) as u16, 443,
-        &initial, fake_ttl,
+        ip.src,
+        ip.dst,
+        crate::desync::rand::random_range(1024, 65535) as u16,
+        443,
+        &initial,
+        fake_ttl,
         ip.identification.wrapping_add(1),
     );
 
@@ -733,10 +741,7 @@ pub fn quic_max_streams(
 /// ## Принцип
 /// Отправляем fake NEW_CONNECTION_ID frame. DPI должен
 /// отслеживать connection ID смены. Это может сбить DPI.
-pub fn quic_new_connection_id(
-    packet: &[u8],
-    fake_ttl_offset: u8,
-) -> DesyncResult {
+pub fn quic_new_connection_id(packet: &[u8], fake_ttl_offset: u8) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -747,9 +752,7 @@ pub fn quic_new_connection_id(
         return DesyncResult::passthrough();
     }
 
-    let version = u32::from_be_bytes([
-        udp_data[1], udp_data[2], udp_data[3], udp_data[4],
-    ]);
+    let version = u32::from_be_bytes([udp_data[1], udp_data[2], udp_data[3], udp_data[4]]);
 
     if version == 0 {
         return DesyncResult::passthrough();
@@ -760,7 +763,7 @@ pub fn quic_new_connection_id(
     frame.push(0x18); // type
     frame.push(0x01); // sequence_number=1
     frame.push(0x08); // connection_id_length=8
-    // Random connection ID
+                      // Random connection ID
     for _ in 0..8 {
         frame.push(crate::desync::rand::random_u32() as u8);
     }
@@ -778,8 +781,12 @@ pub fn quic_new_connection_id(
 
     let fake_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
     let fake_udp = build_udp_packet(
-        ip.src, ip.dst, crate::desync::rand::random_range(1024, 65535) as u16, 443,
-        &short, fake_ttl,
+        ip.src,
+        ip.dst,
+        crate::desync::rand::random_range(1024, 65535) as u16,
+        443,
+        &short,
+        fake_ttl,
         ip.identification.wrapping_add(1),
     );
 
@@ -827,8 +834,7 @@ fn build_quic_initial(dcid: &[u8], _sni: &str) -> Vec<u8> {
 
     // Fill length (remaining bytes after length field)
     let length = payload.len() - length_offset - 2;
-    payload[length_offset..length_offset + 2]
-        .copy_from_slice(&(length as u16).to_be_bytes());
+    payload[length_offset..length_offset + 2].copy_from_slice(&(length as u16).to_be_bytes());
 
     payload
 }
@@ -899,7 +905,10 @@ mod tests {
         // Long Header flag
         assert!(payload[0] & 0x80 != 0);
         // Version
-        assert_eq!(u32::from_be_bytes([payload[1], payload[2], payload[3], payload[4]]), QUIC_VERSION_1);
+        assert_eq!(
+            u32::from_be_bytes([payload[1], payload[2], payload[3], payload[4]]),
+            QUIC_VERSION_1
+        );
     }
 
     #[test]
@@ -907,9 +916,11 @@ mod tests {
         let pkt = build_udp_packet(
             Ipv4Addr::new(192, 168, 1, 1),
             Ipv4Addr::new(8, 8, 8, 8),
-            crate::desync::rand::random_range(1024, 65535) as u16, 443,
+            crate::desync::rand::random_range(1024, 65535) as u16,
+            443,
             &[0x01, 0x02],
-            64, 1,
+            64,
+            1,
         );
         assert_eq!(pkt.len(), 20 + 8 + 2); // IP + UDP + payload
         assert_eq!(pkt[0] >> 4, 4); // IPv4
@@ -918,8 +929,9 @@ mod tests {
 
     #[test]
     fn test_quic_long_header_detection() {
-        let long_header = vec![0xC0, 0x00, 0x00, 0x00, 0x01, 0x08,
-                               0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+        let long_header = vec![
+            0xC0, 0x00, 0x00, 0x00, 0x01, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        ];
         assert!(long_header[0] & 0x80 != 0); // Long Header
 
         let short_header = vec![0x40, 0x00, 0x00, 0x01];
@@ -945,7 +957,9 @@ mod tests {
         pkt[12..16].copy_from_slice(&[192, 168, 1, 1]);
         pkt[16..20].copy_from_slice(&[8, 8, 8, 8]);
         // UDP header
-        pkt[20..22].copy_from_slice(&(crate::desync::rand::random_range(1024, 65535) as u16).to_be_bytes());
+        pkt[20..22].copy_from_slice(
+            &(crate::desync::rand::random_range(1024, 65535) as u16).to_be_bytes(),
+        );
         pkt[22..24].copy_from_slice(&443u16.to_be_bytes());
         pkt[24..26].copy_from_slice(&(udp_len as u16).to_be_bytes());
         // QUIC payload

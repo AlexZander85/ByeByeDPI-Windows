@@ -10,17 +10,19 @@
 //! .\FreeDPI-service.exe --config  # показать конфиг
 //! ```
 
+use clap::Parser;
+use freedpi_api::{
+    EngineHandle, RoutingOverride, StrategyTestParams, StrategyTestResult, TuneParams,
+};
 use freedpi_core::{
+    adaptive::hop_tab::HopTab,
     config::Config,
     conntrack::Conntrack,
-    routing::geo::GeoRouter,
     dns::fakeip::FakeIpManager,
-    adaptive::hop_tab::HopTab,
-    engine::{ProcessingPipeline, ProcessingConfig},
+    engine::{ProcessingConfig, ProcessingPipeline},
     infra::sentinel::Sentinel,
+    routing::geo::GeoRouter,
 };
-use freedpi_api::{EngineHandle, StrategyTestParams, StrategyTestResult, TuneParams, RoutingOverride};
-use clap::Parser;
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -59,11 +61,21 @@ impl ServiceEngine {
 }
 
 impl EngineHandle for ServiceEngine {
-    fn uptime(&self) -> u64 { self.start_time.elapsed().as_secs() }
-    fn packets_processed(&self) -> u64 { self.packets_processed.load(Ordering::Relaxed) }
-    fn active_connections(&self) -> u64 { self.conntrack.active_count() }
-    fn windivert_ok(&self) -> bool { true }
-    fn raw_socket_ok(&self) -> bool { true }
+    fn uptime(&self) -> u64 {
+        self.start_time.elapsed().as_secs()
+    }
+    fn packets_processed(&self) -> u64 {
+        self.packets_processed.load(Ordering::Relaxed)
+    }
+    fn active_connections(&self) -> u64 {
+        self.conntrack.active_count()
+    }
+    fn windivert_ok(&self) -> bool {
+        true
+    }
+    fn raw_socket_ok(&self) -> bool {
+        true
+    }
     fn strategy_stats(&self) -> serde_json::Value {
         serde_json::json!({ "total_strategies": 55, "active_connections": self.active_connections() })
     }
@@ -83,7 +95,10 @@ impl EngineHandle for ServiceEngine {
             test_id: uuid::Uuid::new_v4().to_string(),
             domain: params.domain.clone(),
             strategy_id: params.strategy_id,
-            success: true, latency_ms: 42, handshake_completed: true, error: None,
+            success: true,
+            latency_ms: 42,
+            handshake_completed: true,
+            error: None,
         })
     }
     fn tune_strategy(&self, params: &TuneParams) {
@@ -97,8 +112,9 @@ impl EngineHandle for ServiceEngine {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("info")))
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
         .init();
 
     let cli = Cli::parse();
@@ -121,8 +137,14 @@ async fn main() -> anyhow::Result<()> {
             Arc::new(FakeIpManager::new(10_000)),
             Arc::new(HopTab::new()),
         ) {
-            Ok(p) => { info!("Pipeline created"); Some(p) }
-            Err(e) => { warn!("Pipeline failed (need admin?): {}", e); None }
+            Ok(p) => {
+                info!("Pipeline created");
+                Some(p)
+            }
+            Err(e) => {
+                warn!("Pipeline failed (need admin?): {}", e);
+                None
+            }
         }
     } else {
         None
@@ -135,12 +157,19 @@ async fn main() -> anyhow::Result<()> {
         let engine_clone = engine.clone();
         info!("API at http://127.0.0.1:{}", api_port);
         tokio::spawn(async move {
-            freedpi_api::serve(engine_clone as Arc<dyn EngineHandle + Send + Sync>, api_key, api_port).await;
+            freedpi_api::serve(
+                engine_clone as Arc<dyn EngineHandle + Send + Sync>,
+                api_key,
+                api_port,
+            )
+            .await;
         });
     }
 
     // Start conntrack GC
-    tokio::spawn(async move { conntrack.gc_loop().await; });
+    tokio::spawn(async move {
+        conntrack.gc_loop().await;
+    });
 
     // Start sentinel monitor
     sentinel.start_monitor();
@@ -152,13 +181,18 @@ async fn main() -> anyhow::Result<()> {
     if let Some(pipeline) = pipeline {
         let stats = pipeline.stats_arc();
         let shutdown_rx_pipeline = shutdown_rx.resubscribe();
-        tokio::spawn(async move { pipeline.run(shutdown_rx_pipeline).await; });
+        tokio::spawn(async move {
+            pipeline.run(shutdown_rx_pipeline).await;
+        });
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
             loop {
                 interval.tick().await;
                 let s = stats.snapshot();
-                info!("Stats: recv={} fwd={} inject={}", s.total_received, s.forwarded, s.fake_ch_injected);
+                info!(
+                    "Stats: recv={} fwd={} inject={}",
+                    s.total_received, s.forwarded, s.fake_ch_injected
+                );
             }
         });
     }

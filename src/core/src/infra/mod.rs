@@ -6,7 +6,7 @@
 //! - `named_pipe` — защищённый IPC для AI агента (Windows Named Pipes)
 //! - `windivert_driver` — установка и управление WinDivert driver (из sing-box/offveil)
 
-pub mod sentinel;
 pub mod event_tag;
 pub mod named_pipe;
+pub mod sentinel;
 pub mod windivert_driver;

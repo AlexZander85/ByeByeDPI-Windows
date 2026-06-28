@@ -89,9 +89,7 @@ pub fn build_seq_spoof_packet(
     let fake_ch = ch_gen::build_client_hello(fake_sni);
 
     // Определяем fake TTL из HopTab
-    let fake_ttl = hop_tab
-        .fake_ttl_for_ip(&dst_ip)
-        .unwrap_or(64); // fallback, если нет данных
+    let fake_ttl = hop_tab.fake_ttl_for_ip(&dst_ip).unwrap_or(64); // fallback, если нет данных
 
     // Строим полный IP + TCP пакет
     let packet = build_fake_tcp_packet(
@@ -100,7 +98,7 @@ pub fn build_seq_spoof_packet(
         src_port,
         dst_port,
         client_isn.wrapping_add(SPOOF_OFFSET), // SEQ вне окна
-        0, // ACK = 0 (fake SYN-like)
+        0,                                     // ACK = 0 (fake SYN-like)
         &fake_ch,
         fake_ttl,
     )?;
@@ -282,7 +280,10 @@ pub fn build_seq_spoof_packet_badsum(
         packet[tcp_start + 17] = bad[1];
     }
 
-    debug!("SEQ Spoof (badsum): {}:{} → {}:{}", src_ip, src_port, dst_ip, dst_port);
+    debug!(
+        "SEQ Spoof (badsum): {}:{} → {}:{}",
+        src_ip, src_port, dst_ip, dst_port
+    );
 
     Ok(SeqSpoofResult {
         fake_packet: packet,
@@ -351,7 +352,7 @@ pub fn build_fake_rst_packet(
 mod tests {
     use super::*;
     use crate::adaptive::hop_tab::HopTab;
-    use crate::conntrack::{Conntrack, ConntrackEntry, ConnState};
+    use crate::conntrack::{ConnState, Conntrack, ConntrackEntry};
     use std::net::Ipv4Addr;
     use std::time::Instant;
 
@@ -428,7 +429,12 @@ mod tests {
         let fake_packet = &result.fake_packet;
         // TCP header starts at byte 20 (after IP header)
         let tcp_seq_bytes = &fake_packet[24..28]; // TCP SEQ at offset 4 from TCP header
-        let tcp_seq = u32::from_be_bytes([tcp_seq_bytes[0], tcp_seq_bytes[1], tcp_seq_bytes[2], tcp_seq_bytes[3]]);
+        let tcp_seq = u32::from_be_bytes([
+            tcp_seq_bytes[0],
+            tcp_seq_bytes[1],
+            tcp_seq_bytes[2],
+            tcp_seq_bytes[3],
+        ]);
         // Expected: client_isn(1000) + SPOOF_OFFSET(10000) = 11000
         assert_eq!(tcp_seq, 11000);
     }
@@ -503,7 +509,7 @@ mod tests {
         let pkt = &result.fake_packet;
         assert_eq!(pkt[0] >> 4, 4); // IPv4
         assert_eq!(pkt[9], 6); // TCP protocol
-        // Source IP
+                               // Source IP
         assert_eq!(&pkt[12..16], &[192, 168, 1, 2]);
         // Dest IP
         assert_eq!(&pkt[16..20], &[142, 250, 185, 46]);
@@ -550,9 +556,8 @@ mod tests {
     fn test_ipv4_checksum() {
         // Пример: простой IP header
         let header = vec![
-            0x45, 0x00, 0x00, 0x3c, 0x00, 0x00, 0x40, 0x00,
-            0x40, 0x06, 0x00, 0x00, 0xc0, 0xa8, 0x01, 0x01,
-            0x08, 0x08, 0x08, 0x08,
+            0x45, 0x00, 0x00, 0x3c, 0x00, 0x00, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, 0xc0, 0xa8,
+            0x01, 0x01, 0x08, 0x08, 0x08, 0x08,
         ];
         let cksum = ipv4_checksum(&header);
         assert!(cksum != 0);
@@ -563,9 +568,8 @@ mod tests {
         let src = [192, 168, 1, 1];
         let dst = [8, 8, 8, 8];
         let tcp = vec![
-            0x00, 0x35, 0x01, 0xbb, 0x00, 0x00, 0x00, 0x01,
-            0x00, 0x00, 0x00, 0x00, 0x50, 0x02, 0x71, 0x10,
-            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x35, 0x01, 0xbb, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x50, 0x02,
+            0x71, 0x10, 0x00, 0x00, 0x00, 0x00,
         ];
         let cksum = tcp_checksum_v4(&src, &dst, &tcp);
         assert!(cksum != 0);

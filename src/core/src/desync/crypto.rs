@@ -26,10 +26,7 @@ use tracing::debug;
 /// 2. Генерируем nonce из packet sequence number (8 байт)
 /// 3. Шифруем payload через ChaCha20 (RFC 8439)
 /// 4. Заменяем payload на зашифрованный
-pub fn chacha20_encrypt(
-    packet: &[u8],
-    key: &[u8; 32],
-) -> DesyncResult {
+pub fn chacha20_encrypt(packet: &[u8], key: &[u8; 32]) -> DesyncResult {
     let ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
@@ -63,8 +60,7 @@ pub fn chacha20_encrypt(
     let mut modified = packet.to_vec();
     let payload_start = ip.header_len + data_offset;
     if payload_start + encrypted.len() <= modified.len() {
-        modified[payload_start..payload_start + encrypted.len()]
-            .copy_from_slice(&encrypted);
+        modified[payload_start..payload_start + encrypted.len()].copy_from_slice(&encrypted);
     }
 
     // Recalculate TCP checksum
@@ -74,12 +70,9 @@ pub fn chacha20_encrypt(
         modified[tcp_start + 16] = 0;
         modified[tcp_start + 17] = 0;
     }
-    let tcp_csum = crate::desync::tcp_checksum_v4(
-        ip.src, ip.dst,
-        &modified[tcp_start..tcp_start + tcp_len],
-    );
-    modified[tcp_start + 16..tcp_start + 18]
-        .copy_from_slice(&tcp_csum.to_be_bytes());
+    let tcp_csum =
+        crate::desync::tcp_checksum_v4(ip.src, ip.dst, &modified[tcp_start..tcp_start + tcp_len]);
+    modified[tcp_start + 16..tcp_start + 18].copy_from_slice(&tcp_csum.to_be_bytes());
 
     debug!("[CT2] ChaCha20: {} bytes encrypted", payload.len());
 
@@ -98,10 +91,7 @@ pub fn chacha20_encrypt(
 /// 2. XOR'им их payload → parity пакет
 /// 3. Отправляем parity через alternate path
 /// 4. Сервер может восстановить丢失数据 через XOR
-pub fn xorfec_encode(
-    packets: &[Vec<u8>],
-    parity_index: usize,
-) -> Vec<u8> {
+pub fn xorfec_encode(packets: &[Vec<u8>], parity_index: usize) -> Vec<u8> {
     if packets.is_empty() {
         return Vec::new();
     }
@@ -118,16 +108,16 @@ pub fn xorfec_encode(
         }
     }
 
-    debug!("[CT6] XorFec: {} packets → parity #{}", packets.len(), parity_index);
+    debug!(
+        "[CT6] XorFec: {} packets → parity #{}",
+        packets.len(),
+        parity_index
+    );
     parity
 }
 
 /// Восстановление丢失数据 через XOR.
-pub fn xorfec_decode(
-    received: &[Vec<u8>],
-    parity: &[u8],
-    missing_index: usize,
-) -> Option<Vec<u8>> {
+pub fn xorfec_decode(received: &[Vec<u8>], parity: &[u8], missing_index: usize) -> Option<Vec<u8>> {
     if received.is_empty() {
         return None;
     }
@@ -179,9 +169,8 @@ fn chacha20_block(key: &[u8; 32], counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
 
     // Key (8 × u32)
     for i in 0..8 {
-        state[4 + i] = u32::from_le_bytes([
-            key[i * 4], key[i * 4 + 1], key[i * 4 + 2], key[i * 4 + 3],
-        ]);
+        state[4 + i] =
+            u32::from_le_bytes([key[i * 4], key[i * 4 + 1], key[i * 4 + 2], key[i * 4 + 3]]);
     }
 
     // Counter
@@ -266,7 +255,10 @@ mod tests {
         let p1 = vec![0x01, 0x02, 0x03, 0x04];
         let p2 = vec![0x05, 0x06, 0x07, 0x08];
         let parity_data = xorfec_encode(&[p1.clone(), p2], 0);
-        assert_eq!(parity_data, vec![0x01 ^ 0x05, 0x02 ^ 0x06, 0x03 ^ 0x07, 0x04 ^ 0x08]);
+        assert_eq!(
+            parity_data,
+            vec![0x01 ^ 0x05, 0x02 ^ 0x06, 0x03 ^ 0x07, 0x04 ^ 0x08]
+        );
     }
 
     #[test]

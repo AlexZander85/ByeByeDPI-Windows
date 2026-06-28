@@ -100,10 +100,22 @@ mod tests {
     impl PipeHandler for TestHandler {
         fn handle(&self, msg: &PipeMessage) -> PipeResponse {
             match msg {
-                PipeMessage::Ping => PipeResponse { success: true, data: serde_json::json!({"pong": true}) },
-                PipeMessage::GetStatus => PipeResponse { success: true, data: serde_json::json!({"status": "running"}) },
-                PipeMessage::GetStats => PipeResponse { success: true, data: serde_json::json!({"packets": 0}) },
-                PipeMessage::TestStrategy { domain, .. } => PipeResponse { success: true, data: serde_json::json!({"domain": domain}) },
+                PipeMessage::Ping => PipeResponse {
+                    success: true,
+                    data: serde_json::json!({"pong": true}),
+                },
+                PipeMessage::GetStatus => PipeResponse {
+                    success: true,
+                    data: serde_json::json!({"status": "running"}),
+                },
+                PipeMessage::GetStats => PipeResponse {
+                    success: true,
+                    data: serde_json::json!({"packets": 0}),
+                },
+                PipeMessage::TestStrategy { domain, .. } => PipeResponse {
+                    success: true,
+                    data: serde_json::json!({"domain": domain}),
+                },
             }
         }
     }
@@ -114,7 +126,10 @@ mod tests {
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("ping"));
 
-        let msg = PipeMessage::TestStrategy { domain: "example.com".into(), technique: "FakeSni".into() };
+        let msg = PipeMessage::TestStrategy {
+            domain: "example.com".into(),
+            technique: "FakeSni".into(),
+        };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("example.com"));
     }

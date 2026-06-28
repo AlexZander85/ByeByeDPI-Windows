@@ -227,8 +227,7 @@ impl ProbeTuneRun {
                     || elapsed >= self.config.probe_max_duration
                 {
                     state.success_rate = if state.metrics.packets_processed > 0 {
-                        state.metrics.modifications as f64
-                            / state.metrics.packets_processed as f64
+                        state.metrics.modifications as f64 / state.metrics.packets_processed as f64
                     } else {
                         0.0
                     };
@@ -253,8 +252,7 @@ impl ProbeTuneRun {
             StrategyPhase::Tune => {
                 if elapsed >= self.config.tune_max_duration {
                     state.success_rate = if state.metrics.packets_processed > 0 {
-                        state.metrics.modifications as f64
-                            / state.metrics.packets_processed as f64
+                        state.metrics.modifications as f64 / state.metrics.packets_processed as f64
                     } else {
                         0.0
                     };

@@ -33,7 +33,9 @@ pub struct StrategyMetrics {
 impl StrategyMetrics {
     pub fn success_rate(&self) -> f64 {
         let total = self.success_count + self.fail_count;
-        if total == 0 { return 1.0; }
+        if total == 0 {
+            return 1.0;
+        }
         self.success_count as f64 / total as f64
     }
 
@@ -78,9 +80,7 @@ impl AutoTune {
 
     /// Записывает результат применения стратегии.
     pub fn record(&mut self, strategy_name: &str, success: bool, latency_us: u64) {
-        let metrics = self.metrics
-            .entry(strategy_name.to_string())
-            .or_default();
+        let metrics = self.metrics.entry(strategy_name.to_string()).or_default();
 
         if success {
             metrics.record_success(latency_us);
@@ -103,20 +103,28 @@ impl AutoTune {
             params.split_size = Some(1);
             params.split_count = Some(5);
             params.fake_ttl_offset = Some(2);
-            debug!("AutoTune: {} low success ({:.1}%) → aggressive split",
-                strategy_name, metrics.success_rate() * 100.0);
+            debug!(
+                "AutoTune: {} low success ({:.1}%) → aggressive split",
+                strategy_name,
+                metrics.success_rate() * 100.0
+            );
         } else if metrics.avg_latency_us > 50_000 {
             // Высокий latency — упрощаем
             params.split_count = Some(2);
             params.fake_ttl_offset = Some(1);
-            debug!("AutoTune: {} high latency ({}us) → simplified",
-                strategy_name, metrics.avg_latency_us);
+            debug!(
+                "AutoTune: {} high latency ({}us) → simplified",
+                strategy_name, metrics.avg_latency_us
+            );
         } else if metrics.success_rate() > 0.8 {
             // Хороший результат — минимальный overhead
             params.split_size = Some(1);
             params.split_count = Some(2);
-            debug!("AutoTune: {} good ({:.1}%) → minimal",
-                strategy_name, metrics.success_rate() * 100.0);
+            debug!(
+                "AutoTune: {} good ({:.1}%) → minimal",
+                strategy_name,
+                metrics.success_rate() * 100.0
+            );
         }
 
         params

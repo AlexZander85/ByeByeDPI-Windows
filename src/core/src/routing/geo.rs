@@ -119,95 +119,213 @@ impl GeoRouter {
 
         // === Российские домены ===
         for domain in &[
-            "yandex.ru", "ya.ru", "dzen.ru", "vk.com", "ok.ru",
-            "sberbank.ru", "gosuslugi.ru", "nalog.ru", "cbr.ru",
-            "rutube.ru", "kinopoisk.ru", "ivi.ru", "kion.ru",
-            "ozon.ru", "wildberries.ru", "market.yandex.ru",
-            "avito.ru", "hh.ru", "habr.com", "habr.ru",
-            "tass.ru", "ria.ru", "rbc.ru", "kommersant.ru",
-            "rosreestr.ru", "pfr.gov.ru", "mos.ru", "spb.ru",
-            "mail.ru", "rambler.ru", "lenta.ru", "gazeta.ru",
-            "mts.ru", "megafon.ru", "beeline.ru", "tele2.ru",
-            "alfabank.ru", "vtb.ru", "gazprombank.ru", "raiffeisen.ru",
-            "2gis.ru", "flamp.ru", "pikabu.ru", "drive2.ru",
-            "mosreg.ru", "kremlin.ru", "government.ru",
+            "yandex.ru",
+            "ya.ru",
+            "dzen.ru",
+            "vk.com",
+            "ok.ru",
+            "sberbank.ru",
+            "gosuslugi.ru",
+            "nalog.ru",
+            "cbr.ru",
+            "rutube.ru",
+            "kinopoisk.ru",
+            "ivi.ru",
+            "kion.ru",
+            "ozon.ru",
+            "wildberries.ru",
+            "market.yandex.ru",
+            "avito.ru",
+            "hh.ru",
+            "habr.com",
+            "habr.ru",
+            "tass.ru",
+            "ria.ru",
+            "rbc.ru",
+            "kommersant.ru",
+            "rosreestr.ru",
+            "pfr.gov.ru",
+            "mos.ru",
+            "spb.ru",
+            "mail.ru",
+            "rambler.ru",
+            "lenta.ru",
+            "gazeta.ru",
+            "mts.ru",
+            "megafon.ru",
+            "beeline.ru",
+            "tele2.ru",
+            "alfabank.ru",
+            "vtb.ru",
+            "gazprombank.ru",
+            "raiffeisen.ru",
+            "2gis.ru",
+            "flamp.ru",
+            "pikabu.ru",
+            "drive2.ru",
+            "mosreg.ru",
+            "kremlin.ru",
+            "government.ru",
         ] {
             router.ru_domains.insert(domain.to_string());
         }
 
         // === Европейские домены ===
         for domain in &[
-            "netflix.com", "openai.com", "chatgpt.com", "spotify.com",
-            "signal.org", "proton.me", "protonmail.com", "protonvpn.com",
-            "t.me", "telegram.org", "telegram.me",
-            "bbc.co.uk", "bbc.com", "theguardian.com", "dw.com",
-            "europa.eu", "europe.eu", "coe.int",
-            "booking.com", "airbnb.com", "skyscanner.net",
-            "zalando.com", "zalando.de", "aboutyou.de",
-            "revolut.com", "wise.com", "n26.com",
-            "ing.com", "db.com", "santander.com", "boursorama.com",
-            "lemonde.fr", "lefigaro.fr", "spiegel.de", "bild.de",
-            "corriere.it", "repubblica.it", "elpais.es",
-            "ovh.com", "ovhcloud.com", "hetzner.com", "scaleway.com",
-            "github.com", "gitlab.com", "bitbucket.org",
-            "deepl.com", "linguee.com", "grammarly.com",
-            "telefonica.com", "orange.com", "t-mobile.com",
-            "ikea.com", "h&m.com", "zara.com",
+            "netflix.com",
+            "openai.com",
+            "chatgpt.com",
+            "spotify.com",
+            "signal.org",
+            "proton.me",
+            "protonmail.com",
+            "protonvpn.com",
+            "t.me",
+            "telegram.org",
+            "telegram.me",
+            "bbc.co.uk",
+            "bbc.com",
+            "theguardian.com",
+            "dw.com",
+            "europa.eu",
+            "europe.eu",
+            "coe.int",
+            "booking.com",
+            "airbnb.com",
+            "skyscanner.net",
+            "zalando.com",
+            "zalando.de",
+            "aboutyou.de",
+            "revolut.com",
+            "wise.com",
+            "n26.com",
+            "ing.com",
+            "db.com",
+            "santander.com",
+            "boursorama.com",
+            "lemonde.fr",
+            "lefigaro.fr",
+            "spiegel.de",
+            "bild.de",
+            "corriere.it",
+            "repubblica.it",
+            "elpais.es",
+            "ovh.com",
+            "ovhcloud.com",
+            "hetzner.com",
+            "scaleway.com",
+            "github.com",
+            "gitlab.com",
+            "bitbucket.org",
+            "deepl.com",
+            "linguee.com",
+            "grammarly.com",
+            "telefonica.com",
+            "orange.com",
+            "t-mobile.com",
+            "ikea.com",
+            "h&m.com",
+            "zara.com",
         ] {
             router.eu_domains.insert(domain.to_string());
         }
 
         // === Американские домены ===
         for domain in &[
-            "google.com", "facebook.com", "fb.com", "instagram.com",
-            "twitter.com", "x.com", "reddit.com",
-            "youtube.com", "yt.be", "twitch.tv",
-            "amazon.com", "aws.com", "aws.amazon.com",
-            "apple.com", "icloud.com", "icloud.co.uk",
-            "microsoft.com", "live.com", "outlook.com", "office.com",
-            "cloudflare.com", "fastly.com", "akamai.com",
-            "vercel.com", "netlify.com", "heroku.com",
-            "linkedin.com", "indeed.com", "glassdoor.com",
-            "nytimes.com", "wsj.com", "washingtonpost.com",
-            "paypal.com", "stripe.com", "square.com",
-            "salesforce.com", "hubspot.com", "zendesk.com",
-            "atlassian.com", "jira.com", "confluence.com",
-            "docker.com", "k8s.io", "kubernetes.io",
-            "stackoverflow.com", "medium.com", "quora.com",
-            "ebay.com", "etsy.com", "walmart.com",
-            "adobe.com", "oracle.com", "ibm.com",
-            "intel.com", "nvidia.com", "amd.com",
-            "tesla.com", "spacex.com", "starlink.com",
+            "google.com",
+            "facebook.com",
+            "fb.com",
+            "instagram.com",
+            "twitter.com",
+            "x.com",
+            "reddit.com",
+            "youtube.com",
+            "yt.be",
+            "twitch.tv",
+            "amazon.com",
+            "aws.com",
+            "aws.amazon.com",
+            "apple.com",
+            "icloud.com",
+            "icloud.co.uk",
+            "microsoft.com",
+            "live.com",
+            "outlook.com",
+            "office.com",
+            "cloudflare.com",
+            "fastly.com",
+            "akamai.com",
+            "vercel.com",
+            "netlify.com",
+            "heroku.com",
+            "linkedin.com",
+            "indeed.com",
+            "glassdoor.com",
+            "nytimes.com",
+            "wsj.com",
+            "washingtonpost.com",
+            "paypal.com",
+            "stripe.com",
+            "square.com",
+            "salesforce.com",
+            "hubspot.com",
+            "zendesk.com",
+            "atlassian.com",
+            "jira.com",
+            "confluence.com",
+            "docker.com",
+            "k8s.io",
+            "kubernetes.io",
+            "stackoverflow.com",
+            "medium.com",
+            "quora.com",
+            "ebay.com",
+            "etsy.com",
+            "walmart.com",
+            "adobe.com",
+            "oracle.com",
+            "ibm.com",
+            "intel.com",
+            "nvidia.com",
+            "amd.com",
+            "tesla.com",
+            "spacex.com",
+            "starlink.com",
         ] {
             router.us_domains.insert(domain.to_string());
         }
 
         // === Исключённые домены (без desync) ===
         for domain in &[
-            "online.sberbank.ru", "login.vtb.ru", "alfabank.ru",
-            "gosuslugi.ru", "lk.gosuslugi.ru",
-            "my.mos.ru", "eservices.mos.ru",
-            "esia.gosuslugi.ru", "esia-pub.gosuslugi.ru",
+            "online.sberbank.ru",
+            "login.vtb.ru",
+            "alfabank.ru",
+            "gosuslugi.ru",
+            "lk.gosuslugi.ru",
+            "my.mos.ru",
+            "eservices.mos.ru",
+            "esia.gosuslugi.ru",
+            "esia-pub.gosuslugi.ru",
         ] {
             router.exclude_domains.insert(domain.to_string());
         }
 
         // === CIDR диапазоны ===
-        router.add_ru_cidr("2a02:6b8::/32");     // Yandex
-        router.add_ru_cidr("2a00:1450::/32");     // VK
-        router.add_ru_cidr("5.45.192.0/18");      // Yandex
-        router.add_ru_cidr("87.240.128.0/18");    // VK
-        router.add_ru_cidr("185.12.92.0/22");     // Sberbank
-        router.add_ru_cidr("195.208.0.0/14");     // Rostelecom
-        router.add_ru_cidr("46.17.200.0/21");     // Beeline
-        router.add_ru_cidr("213.59.0.0/16");      // MTS
+        router.add_ru_cidr("2a02:6b8::/32"); // Yandex
+        router.add_ru_cidr("2a00:1450::/32"); // VK
+        router.add_ru_cidr("5.45.192.0/18"); // Yandex
+        router.add_ru_cidr("87.240.128.0/18"); // VK
+        router.add_ru_cidr("185.12.92.0/22"); // Sberbank
+        router.add_ru_cidr("195.208.0.0/14"); // Rostelecom
+        router.add_ru_cidr("46.17.200.0/21"); // Beeline
+        router.add_ru_cidr("213.59.0.0/16"); // MTS
 
-        router.add_eu_cidr("2a01:4f8::/32");      // Hetzner (DE)
-        router.add_eu_cidr("5.9.0.0/16");         // Hetzner (DE)
-        router.add_eu_cidr("51.15.0.0/16");       // Scaleway (FR)
-        router.add_eu_cidr("54.36.0.0/15");       // OVH (FR)
-        router.add_eu_cidr("185.15.64.0/22");     // ProtonVPN (CH)
-        router.add_eu_cidr("185.167.238.0/24");   // Opera VPN (EU)
+        router.add_eu_cidr("2a01:4f8::/32"); // Hetzner (DE)
+        router.add_eu_cidr("5.9.0.0/16"); // Hetzner (DE)
+        router.add_eu_cidr("51.15.0.0/16"); // Scaleway (FR)
+        router.add_eu_cidr("54.36.0.0/15"); // OVH (FR)
+        router.add_eu_cidr("185.15.64.0/22"); // ProtonVPN (CH)
+        router.add_eu_cidr("185.167.238.0/24"); // Opera VPN (EU)
 
         debug!(
             "GeoRouter initialized: {} RU domains, {} EU domains, {} US domains, \
@@ -357,21 +475,10 @@ impl GeoRouter {
     /// Строит цепочку egress-попыток для региона.
     pub fn build_egress_chain(&self, region: GeoRegion) -> Vec<EgressHop> {
         match region {
-            GeoRegion::Russia => vec![
-                EgressHop::direct(),
-                EgressHop::socks5("127.0.0.1", 1370),
-            ],
-            GeoRegion::Europe => vec![
-                EgressHop::opera_vpn(),
-                EgressHop::direct(),
-            ],
-            GeoRegion::UnitedStates => vec![
-                EgressHop::user_proxy(),
-                EgressHop::direct(),
-            ],
-            GeoRegion::Global | GeoRegion::Excluded => vec![
-                EgressHop::direct(),
-            ],
+            GeoRegion::Russia => vec![EgressHop::direct(), EgressHop::socks5("127.0.0.1", 1370)],
+            GeoRegion::Europe => vec![EgressHop::opera_vpn(), EgressHop::direct()],
+            GeoRegion::UnitedStates => vec![EgressHop::user_proxy(), EgressHop::direct()],
+            GeoRegion::Global | GeoRegion::Excluded => vec![EgressHop::direct()],
         }
     }
 

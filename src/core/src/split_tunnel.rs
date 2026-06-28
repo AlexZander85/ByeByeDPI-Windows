@@ -3,7 +3,7 @@
 //! Определяет, какие домены/IP должны проходить через DPI-обход,
 //! а какие — напрямую (банки, госуслуги, корпоративные ресурсы).
 
-use dashmap::{DashSet, DashMap};
+use dashmap::{DashMap, DashSet};
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -112,24 +112,16 @@ impl SplitTunnel {
                 domain.is_some_and(|d| self.whitelist_domains.contains(d.value()))
                     || self.whitelist_ips.contains(dst_ip)
             }
-            SplitMode::BlacklistOnly => {
-                !self.blacklist_ips.contains(dst_ip)
-            }
-            SplitMode::Auto => {
-                !self.auto_detected.contains(dst_ip)
-            }
+            SplitMode::BlacklistOnly => !self.blacklist_ips.contains(dst_ip),
+            SplitMode::Auto => !self.auto_detected.contains(dst_ip),
         }
     }
 
     /// Определяет, нужно ли обходить этот домен.
     pub fn should_bypass_domain(&self, domain: &str) -> bool {
         match self.mode {
-            SplitMode::WhitelistOnly => {
-                self.whitelist_domains.contains(domain)
-            }
-            SplitMode::BlacklistOnly => {
-                !self.blacklist_domains.contains(domain)
-            }
+            SplitMode::WhitelistOnly => self.whitelist_domains.contains(domain),
+            SplitMode::BlacklistOnly => !self.blacklist_domains.contains(domain),
             SplitMode::Auto => true, // Auto: пробуем всё
         }
     }
@@ -153,7 +145,8 @@ impl SplitTunnel {
             }
             SplitMode::Auto => {
                 if self.auto_detected.iter().any(|ip| {
-                    self.domain_cache.get(&ip)
+                    self.domain_cache
+                        .get(&ip)
                         .is_some_and(|d| d.value() == domain)
                 }) {
                     SplitDecision::Direct
@@ -204,10 +197,11 @@ impl SplitTunnel {
 
         match self.mode {
             SplitMode::BlacklistOnly if !self.blacklist_ips.is_empty() => {
-                    let exclusions: Vec<String> = self.blacklist_ips
-                        .iter()
-                        .take(32) // WinDivert лимит
-                        .map(|ip| format!("ip.DstAddr != {}", *ip))
+                let exclusions: Vec<String> = self
+                    .blacklist_ips
+                    .iter()
+                    .take(32) // WinDivert лимит
+                    .map(|ip| format!("ip.DstAddr != {}", *ip))
                     .collect();
                 if exclusions.is_empty() {
                     base
@@ -232,18 +226,12 @@ impl SplitTunnel {
 
     /// Снапшот blacklist для API.
     pub fn blacklist_snapshot(&self) -> Vec<String> {
-        self.blacklist_domains
-            .iter()
-            .map(|d| d.clone())
-            .collect()
+        self.blacklist_domains.iter().map(|d| d.clone()).collect()
     }
 
     /// Снапшот whitelist для API.
     pub fn whitelist_snapshot(&self) -> Vec<String> {
-        self.whitelist_domains
-            .iter()
-            .map(|d| d.clone())
-            .collect()
+        self.whitelist_domains.iter().map(|d| d.clone()).collect()
     }
 }
 
@@ -296,10 +284,8 @@ impl AutoProber {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::TcpStream;
 
-        let stream = tokio::time::timeout(
-            Duration::from_secs(3),
-            TcpStream::connect((ip, 443)),
-        ).await;
+        let stream =
+            tokio::time::timeout(Duration::from_secs(3), TcpStream::connect((ip, 443))).await;
 
         let Ok(Ok(mut stream)) = stream else {
             return ProbeResult::Blocked;
@@ -311,10 +297,7 @@ impl AutoProber {
         }
 
         let mut buf = [0u8; 1024];
-        let response = tokio::time::timeout(
-            Duration::from_secs(2),
-            stream.read(&mut buf),
-        ).await;
+        let response = tokio::time::timeout(Duration::from_secs(2), stream.read(&mut buf)).await;
 
         match response {
             Ok(Ok(n)) if n > 5 && buf[0] == 0x16 => ProbeResult::Direct,
@@ -325,7 +308,9 @@ impl AutoProber {
     fn append_to_file(&self, path: &str, domain: &str) {
         use std::io::Write;
         if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true).append(true).open(path)
+            .create(true)
+            .append(true)
+            .open(path)
         {
             let _ = writeln!(file, "{}", domain);
         }
@@ -364,17 +349,18 @@ fn build_probe_client_hello(domain: &str) -> Vec<u8> {
 
     // TLS record: Handshake
     packet.extend_from_slice(&[
-        0x16,       // ContentType: Handshake
+        0x16, // ContentType: Handshake
         0x03, 0x01, // TLS version (TLS 1.0 in record layer)
         0x00, 0x00, // Length (placeholder)
     ]);
 
     // Handshake: ClientHello
     packet.extend_from_slice(&[
-        0x01,       // HandshakeType: ClientHello
+        0x01, // HandshakeType: ClientHello
         0x00, 0x00, 0x00, // Length (placeholder)
-        0x03, 0x03, // Version: TLS 1.2
-        // Random (32 bytes) — можно из реального Chrome
+        0x03,
+        0x03, // Version: TLS 1.2
+              // Random (32 bytes) — можно из реального Chrome
     ]);
     packet.extend_from_slice(&[0u8; 32]);
 
@@ -394,16 +380,10 @@ fn build_probe_client_hello(domain: &str) -> Vec<u8> {
     // Extension: SNI (server_name)
     packet.extend_from_slice(&[0x00, 0x00]); // Type: SNI (0)
     let sni_payload_len = 2 + 1 + 2 + sni_len;
-    packet.extend_from_slice(&[
-        (sni_payload_len >> 8) as u8,
-        (sni_payload_len & 0xFF) as u8,
-    ]);
+    packet.extend_from_slice(&[(sni_payload_len >> 8) as u8, (sni_payload_len & 0xFF) as u8]);
     packet.extend_from_slice(&[0x00, (sni_len + 5) as u8]); // SNI list length
     packet.extend_from_slice(&[0x00]); // NameType: host_name
-    packet.extend_from_slice(&[
-        (sni_len >> 8) as u8,
-        (sni_len & 0xFF) as u8,
-    ]);
+    packet.extend_from_slice(&[(sni_len >> 8) as u8, (sni_len & 0xFF) as u8]);
     packet.extend_from_slice(domain.as_bytes());
 
     // Fill lengths

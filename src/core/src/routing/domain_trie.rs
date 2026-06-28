@@ -83,10 +83,7 @@ impl DomainTrie {
                     node = node.multi_wild.as_mut().unwrap();
                 }
                 _ => {
-                    node = node
-                        .children
-                        .entry(label.clone())
-                        .or_default();
+                    node = node.children.entry(label.clone()).or_default();
                 }
             }
         }

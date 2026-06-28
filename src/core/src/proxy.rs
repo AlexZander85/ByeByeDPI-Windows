@@ -118,7 +118,9 @@ impl ProxyEntry {
         let s = self.success_count.load(Ordering::Relaxed) as f64;
         let f = self.fail_count.load(Ordering::Relaxed) as f64;
         let total = s + f;
-        if total == 0.0 { return 1.0; }
+        if total == 0.0 {
+            return 1.0;
+        }
         s / total
     }
 
@@ -185,7 +187,9 @@ impl ProxyFallback {
     /// Получает следующий доступный прокси.
     pub fn next_proxy(&self) -> Option<&ProxyEntry> {
         let len = self.chain.len();
-        if len == 0 { return None; }
+        if len == 0 {
+            return None;
+        }
 
         let start = self.current.load(Ordering::Relaxed);
         for i in 0..len {
@@ -234,13 +238,16 @@ impl ProxyFallback {
 
     /// Снапшот цепочки для API.
     pub fn snapshot(&self) -> Vec<ProxySnapshot> {
-        self.chain.iter().map(|e| ProxySnapshot {
-            addr: e.addr.to_string(),
-            proxy_type: format!("{:?}", e.proxy_type),
-            healthy: e.is_healthy(),
-            latency_ms: e.latency_ms(),
-            success_rate: e.success_rate(),
-        }).collect()
+        self.chain
+            .iter()
+            .map(|e| ProxySnapshot {
+                addr: e.addr.to_string(),
+                proxy_type: format!("{:?}", e.proxy_type),
+                healthy: e.is_healthy(),
+                latency_ms: e.latency_ms(),
+                success_rate: e.success_rate(),
+            })
+            .collect()
     }
 }
 
@@ -282,8 +289,10 @@ impl FreeProxyPool {
         Self {
             proxies: Arc::new(DashMap::new()),
             source_urls: vec![
-                "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt".to_string(),
-                "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks5.txt".to_string(),
+                "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt"
+                    .to_string(),
+                "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks5.txt"
+                    .to_string(),
             ],
             update_interval: Duration::from_secs(300),
         }
@@ -296,12 +305,16 @@ impl FreeProxyPool {
 
     /// Получает случайный здоровый прокси.
     pub fn get_random(&self) -> Option<ProxyEntry> {
-        let healthy: Vec<_> = self.proxies.iter()
+        let healthy: Vec<_> = self
+            .proxies
+            .iter()
             .filter(|e| e.value().is_healthy() && e.value().success_rate() > 0.5)
             .map(|e| e.value().clone())
             .collect();
 
-        if healthy.is_empty() { return None; }
+        if healthy.is_empty() {
+            return None;
+        }
 
         let idx = crate::desync::rand::random_range(0, healthy.len() as u32) as usize;
         healthy.into_iter().nth(idx)
@@ -309,13 +322,16 @@ impl FreeProxyPool {
 
     /// Получает лучший прокси (по success_rate и latency).
     pub fn get_best(&self) -> Option<ProxyEntry> {
-        self.proxies.iter()
+        self.proxies
+            .iter()
             .filter(|e| e.value().is_healthy())
             .map(|e| e.value().clone())
             .max_by(|a, b| {
                 let score_a = a.success_rate() * 1000.0 - a.latency_ms() as f64;
                 let score_b = b.success_rate() * 1000.0 - b.latency_ms() as f64;
-                score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
+                score_a
+                    .partial_cmp(&score_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
     }
 
@@ -349,7 +365,8 @@ impl FreeProxyPool {
 
     /// Количество здоровых прокси.
     pub fn healthy_count(&self) -> usize {
-        self.proxies.iter()
+        self.proxies
+            .iter()
             .filter(|e| e.value().is_healthy())
             .count()
     }
@@ -443,7 +460,9 @@ impl FingerprintRotator {
             ],
             extensions: vec![0, 23, 65281, 10, 11, 35, 16, 5, 13, 18, 51, 45, 43, 27, 21],
             supported_groups: vec![0x001d, 0x0017, 0x0018], // x25519, secp256r1, secp384r1
-            sig_algorithms: vec![0x0403, 0x0804, 0x0401, 0x0503, 0x0805, 0x0501, 0x0806, 0x0601],
+            sig_algorithms: vec![
+                0x0403, 0x0804, 0x0401, 0x0503, 0x0805, 0x0501, 0x0806, 0x0601,
+            ],
         }
     }
 
@@ -458,9 +477,13 @@ impl FingerprintRotator {
                 0xcca9, 0xcca8, // ECDHE_CHACHA20
                 0xc013, 0xc014, 0x009c, 0x009d, 0x002f, 0x0035,
             ],
-            extensions: vec![0, 23, 65281, 10, 11, 35, 16, 5, 13, 51, 45, 43, 27, 21, 17513],
+            extensions: vec![
+                0, 23, 65281, 10, 11, 35, 16, 5, 13, 51, 45, 43, 27, 21, 17513,
+            ],
             supported_groups: vec![0x001d, 0x0017, 0x0018],
-            sig_algorithms: vec![0x0403, 0x0503, 0x0603, 0x0804, 0x0805, 0x0806, 0x0401, 0x0501, 0x0601],
+            sig_algorithms: vec![
+                0x0403, 0x0503, 0x0603, 0x0804, 0x0805, 0x0806, 0x0401, 0x0501, 0x0601,
+            ],
         }
     }
 
@@ -469,13 +492,9 @@ impl FingerprintRotator {
         TlsFingerprint {
             name: "Safari 17".to_string(),
             cipher_suites: vec![
-                0x1301, 0x1302, 0x1303,
-                0xc02c, 0xc02b, // ECDHE
-                0xcca9, 0xcca8,
-                0xc030, 0xc02f,
-                0xc028, 0xc027,
-                0xc014, 0xc013,
-                0x009d, 0x009c, 0x003d, 0x003c, 0x0035, 0x002f,
+                0x1301, 0x1302, 0x1303, 0xc02c, 0xc02b, // ECDHE
+                0xcca9, 0xcca8, 0xc030, 0xc02f, 0xc028, 0xc027, 0xc014, 0xc013, 0x009d, 0x009c,
+                0x003d, 0x003c, 0x0035, 0x002f,
             ],
             extensions: vec![0, 23, 65281, 10, 11, 35, 16, 5, 13, 18, 51, 45, 43, 27, 21],
             supported_groups: vec![0x001d, 0x0017, 0x0100], // x25519, secp256r1, secp256k1
@@ -488,15 +507,14 @@ impl FingerprintRotator {
         TlsFingerprint {
             name: "Edge 120".to_string(),
             cipher_suites: vec![
-                0x1301, 0x1302, 0x1303,
-                0xc02b, 0xc02f, 0xc02c, 0xc030,
-                0xcca9, 0xcca8,
-                0xc013, 0xc014, 0xc009, 0xc00a,
-                0x009c, 0x009d, 0x002f, 0x0035,
+                0x1301, 0x1302, 0x1303, 0xc02b, 0xc02f, 0xc02c, 0xc030, 0xcca9, 0xcca8, 0xc013,
+                0xc014, 0xc009, 0xc00a, 0x009c, 0x009d, 0x002f, 0x0035,
             ],
             extensions: vec![0, 23, 65281, 10, 11, 35, 16, 5, 13, 18, 51, 45, 43, 27, 21],
             supported_groups: vec![0x001d, 0x0017, 0x0018],
-            sig_algorithms: vec![0x0403, 0x0804, 0x0401, 0x0503, 0x0805, 0x0501, 0x0806, 0x0601],
+            sig_algorithms: vec![
+                0x0403, 0x0804, 0x0401, 0x0503, 0x0805, 0x0501, 0x0806, 0x0601,
+            ],
         }
     }
 }
@@ -512,7 +530,9 @@ pub fn parse_proxy_list(text: &str) -> Vec<ProxyEntry> {
     text.lines()
         .filter_map(|line| {
             let line = line.trim();
-            if line.is_empty() || line.starts_with('#') { return None; }
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
             let addr: SocketAddr = line.parse().ok()?;
             Some(ProxyEntry::new(addr, ProxyType::Socks5))
         })
@@ -534,10 +554,7 @@ mod tests {
     #[test]
     fn test_proxy_fallback_add_and_get() {
         let mut fb = ProxyFallback::new();
-        let entry = ProxyEntry::new(
-            "127.0.0.1:1080".parse().unwrap(),
-            ProxyType::Socks5,
-        );
+        let entry = ProxyEntry::new("127.0.0.1:1080".parse().unwrap(), ProxyType::Socks5);
         fb.add_proxy(entry);
         assert_eq!(fb.len(), 1);
         assert!(fb.next_proxy().is_some());
@@ -545,10 +562,7 @@ mod tests {
 
     #[test]
     fn test_proxy_entry_success_rate() {
-        let entry = ProxyEntry::new(
-            "127.0.0.1:1080".parse().unwrap(),
-            ProxyType::Socks5,
-        );
+        let entry = ProxyEntry::new("127.0.0.1:1080".parse().unwrap(), ProxyType::Socks5);
         assert_eq!(entry.success_rate(), 1.0); // no failures yet
         entry.mark_success(0);
         entry.mark_success(0);
@@ -568,10 +582,7 @@ mod tests {
     #[test]
     fn test_free_proxy_pool() {
         let pool = FreeProxyPool::new();
-        let entry = ProxyEntry::new(
-            "127.0.0.1:1080".parse().unwrap(),
-            ProxyType::Socks5,
-        );
+        let entry = ProxyEntry::new("127.0.0.1:1080".parse().unwrap(), ProxyType::Socks5);
         pool.add(entry);
         assert_eq!(pool.len(), 1);
         assert_eq!(pool.healthy_count(), 1);
@@ -580,10 +591,7 @@ mod tests {
     #[test]
     fn test_free_proxy_pool_mark() {
         let pool = FreeProxyPool::new();
-        let entry = ProxyEntry::new(
-            "127.0.0.1:1080".parse().unwrap(),
-            ProxyType::Socks5,
-        );
+        let entry = ProxyEntry::new("127.0.0.1:1080".parse().unwrap(), ProxyType::Socks5);
         pool.add(entry);
         pool.mark_success("127.0.0.1:1080", 50);
         assert_eq!(pool.healthy_count(), 1);

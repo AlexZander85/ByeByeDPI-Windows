@@ -36,7 +36,9 @@ impl FallbackEntry {
 
     pub fn success_rate(&self) -> f64 {
         let total = self.success_count + self.fail_count;
-        if total == 0 { return 1.0; }
+        if total == 0 {
+            return 1.0;
+        }
         self.success_count as f64 / total as f64
     }
 }
@@ -69,10 +71,7 @@ impl FallbackChain {
 
     /// Создаёт цепочку из списка техник.
     pub fn from_techniques(techniques: Vec<DesyncTechnique>) -> Self {
-        let entries: Vec<FallbackEntry> = techniques
-            .into_iter()
-            .map(FallbackEntry::new)
-            .collect();
+        let entries: Vec<FallbackEntry> = techniques.into_iter().map(FallbackEntry::new).collect();
         Self {
             entries,
             current: AtomicUsize::new(0),
@@ -95,7 +94,9 @@ impl FallbackChain {
     /// Переключается на следующую здоровую стратегию.
     pub fn advance(&self) -> Option<&FallbackEntry> {
         let len = self.entries.len();
-        if len == 0 { return None; }
+        if len == 0 {
+            return None;
+        }
 
         let start = self.current.load(Ordering::Relaxed);
         for i in 1..=len {
@@ -103,7 +104,11 @@ impl FallbackChain {
             let entry = &self.entries[idx];
             if entry.success_rate() >= self.min_success_rate {
                 self.current.store(idx, Ordering::Relaxed);
-                debug!("FallbackChain: advanced to strategy {} ({})", idx, entry.technique.name());
+                debug!(
+                    "FallbackChain: advanced to strategy {} ({})",
+                    idx,
+                    entry.technique.name()
+                );
                 return Some(entry);
             }
         }
@@ -116,7 +121,10 @@ impl FallbackChain {
     pub fn record_success(&self, _latency_us: u64) {
         let idx = self.current.load(Ordering::Relaxed);
         if idx < self.entries.len() {
-            debug!("FallbackChain: success for strategy {} ({}us)", idx, _latency_us);
+            debug!(
+                "FallbackChain: success for strategy {} ({}us)",
+                idx, _latency_us
+            );
         }
     }
 
@@ -138,12 +146,16 @@ impl FallbackChain {
     /// Снапшот для API.
     pub fn snapshot(&self) -> Vec<FallbackSnapshot> {
         let current_idx = self.current.load(Ordering::Relaxed);
-        self.entries.iter().enumerate().map(|(i, e)| FallbackSnapshot {
-            index: i,
-            technique: e.technique.name().to_string(),
-            success_rate: e.success_rate(),
-            is_current: i == current_idx,
-        }).collect()
+        self.entries
+            .iter()
+            .enumerate()
+            .map(|(i, e)| FallbackSnapshot {
+                index: i,
+                technique: e.technique.name().to_string(),
+                success_rate: e.success_rate(),
+                is_current: i == current_idx,
+            })
+            .collect()
     }
 }
 

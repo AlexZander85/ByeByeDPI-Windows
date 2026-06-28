@@ -17,17 +17,16 @@
 //! - `GET /api/v1/health` — health check
 
 use axum::{
-    Router,
-    Json,
-    extract::{State, Request},
+    extract::{Request, State},
     http::StatusCode,
-    routing::{get, post},
     middleware::{self, Next},
     response::{IntoResponse, Response},
+    routing::{get, post},
+    Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tracing::{info, warn};
 
 // ─── Типы данных ───────────────────────────────────────────────────────────
@@ -108,11 +107,7 @@ fn default_ttl() -> u64 {
 /// Запускает HTTP API сервер.
 ///
 /// Слушает на `127.0.0.1:{port}`. Все эндпоинты требуют `X-API-Key`.
-pub async fn serve(
-    engine: Arc<dyn EngineHandle + Send + Sync>,
-    api_key: String,
-    port: u16,
-) {
+pub async fn serve(engine: Arc<dyn EngineHandle + Send + Sync>, api_key: String, port: u16) {
     let state = Arc::new(ApiState { engine, api_key });
 
     let app = Router::new()
@@ -124,7 +119,10 @@ pub async fn serve(
         .route("/api/v1/dns/cache", get(dns_cache_handler))
         .route("/api/v1/routing/override", post(routing_override_handler))
         .route("/api/v1/health", get(health_handler))
-        .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ))
         .with_state(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -158,9 +156,7 @@ async fn auth_middleware(
 // ─── Handlers ──────────────────────────────────────────────────────────────
 
 /// `GET /api/v1/status` — статус движка.
-async fn status_handler(
-    State(state): State<Arc<ApiState>>,
-) -> impl IntoResponse {
+async fn status_handler(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     Json(serde_json::json!({
         "status": "running",
         "version": env!("CARGO_PKG_VERSION"),
@@ -177,21 +173,18 @@ async fn test_strategy_handler(
     Json(params): Json<StrategyTestParams>,
 ) -> impl IntoResponse {
     match state.engine.test_strategy(&params) {
-        Ok(result) => {
-            (StatusCode::OK, Json(serde_json::to_value(result).unwrap()))
-        }
-        Err(e) => {
-            (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+        Ok(result) => (StatusCode::OK, Json(serde_json::to_value(result).unwrap())),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
                 "error": e
-            })))
-        }
+            })),
+        ),
     }
 }
 
 /// `GET /api/v1/strategies/stats` — статистика стратегий.
-async fn strategy_stats_handler(
-    State(state): State<Arc<ApiState>>,
-) -> impl IntoResponse {
+async fn strategy_stats_handler(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     Json(state.engine.strategy_stats())
 }
 
@@ -208,16 +201,12 @@ async fn tune_strategy_handler(
 }
 
 /// `GET /api/v1/conntrack` — список активных соединений.
-async fn conntrack_handler(
-    State(state): State<Arc<ApiState>>,
-) -> impl IntoResponse {
+async fn conntrack_handler(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     Json(state.engine.conntrack_snapshot())
 }
 
 /// `GET /api/v1/dns/cache` — содержимое DNS кэша.
-async fn dns_cache_handler(
-    State(state): State<Arc<ApiState>>,
-) -> impl IntoResponse {
+async fn dns_cache_handler(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     Json(state.engine.dns_cache_snapshot())
 }
 
@@ -235,9 +224,7 @@ async fn routing_override_handler(
 }
 
 /// `GET /api/v1/health` — health check.
-async fn health_handler(
-    State(state): State<Arc<ApiState>>,
-) -> impl IntoResponse {
+async fn health_handler(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     Json(serde_json::json!({
         "healthy": true,
         "windivert_ok": state.engine.windivert_ok(),
@@ -253,11 +240,21 @@ mod tests {
     struct MockEngine;
 
     impl EngineHandle for MockEngine {
-        fn uptime(&self) -> u64 { 3600 }
-        fn packets_processed(&self) -> u64 { 1000000 }
-        fn active_connections(&self) -> u64 { 342 }
-        fn windivert_ok(&self) -> bool { true }
-        fn raw_socket_ok(&self) -> bool { true }
+        fn uptime(&self) -> u64 {
+            3600
+        }
+        fn packets_processed(&self) -> u64 {
+            1000000
+        }
+        fn active_connections(&self) -> u64 {
+            342
+        }
+        fn windivert_ok(&self) -> bool {
+            true
+        }
+        fn raw_socket_ok(&self) -> bool {
+            true
+        }
         fn strategy_stats(&self) -> serde_json::Value {
             serde_json::json!({"total": 106, "active": 42})
         }
@@ -268,7 +265,10 @@ mod tests {
             serde_json::json!({"total": 150, "entries": {}})
         }
         fn shutdown(&self) {}
-        fn test_strategy(&self, _params: &StrategyTestParams) -> Result<StrategyTestResult, String> {
+        fn test_strategy(
+            &self,
+            _params: &StrategyTestParams,
+        ) -> Result<StrategyTestResult, String> {
             Ok(StrategyTestResult {
                 test_id: "test-1".to_string(),
                 domain: "example.com".to_string(),

@@ -170,9 +170,24 @@ mod tests {
         let plan = SegmentPlanSet {
             name: "sort-test".into(),
             plans: vec![
-                SegmentPlan { ref_point: SplitRef::Sni, offset: 10, lazy: false, noise: 0 },
-                SegmentPlan { ref_point: SplitRef::Head, offset: 5, lazy: false, noise: 0 },
-                SegmentPlan { ref_point: SplitRef::Sni, offset: -3, lazy: false, noise: 0 },
+                SegmentPlan {
+                    ref_point: SplitRef::Sni,
+                    offset: 10,
+                    lazy: false,
+                    noise: 0,
+                },
+                SegmentPlan {
+                    ref_point: SplitRef::Head,
+                    offset: 5,
+                    lazy: false,
+                    noise: 0,
+                },
+                SegmentPlan {
+                    ref_point: SplitRef::Sni,
+                    offset: -3,
+                    lazy: false,
+                    noise: 0,
+                },
             ],
         };
         let positions = plan.resolve(20);

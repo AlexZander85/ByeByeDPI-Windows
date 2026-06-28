@@ -134,7 +134,12 @@ impl RuleRegistry {
     }
 
     /// Применяет override к базовому DesyncConfig.
-    pub fn resolve(&self, base: &DesyncConfig, domain: Option<&str>, ip: Option<Ipv4Addr>) -> ResolvedConfig {
+    pub fn resolve(
+        &self,
+        base: &DesyncConfig,
+        domain: Option<&str>,
+        ip: Option<Ipv4Addr>,
+    ) -> ResolvedConfig {
         let rule = match self.find_match(domain, ip) {
             Some(r) => r,
             None => {
@@ -214,9 +219,7 @@ fn domain_matches_recursive(dom: &[&str], pat: &[&str], di: usize, pi: usize) ->
             // Single-level wildcard: пропускаем один уровень
             domain_matches_recursive(dom, pat, di + 1, pi + 1)
         }
-        p => {
-            p.eq_ignore_ascii_case(dom[di]) && domain_matches_recursive(dom, pat, di + 1, pi + 1)
-        }
+        p => p.eq_ignore_ascii_case(dom[di]) && domain_matches_recursive(dom, pat, di + 1, pi + 1),
     }
 }
 
@@ -278,9 +281,18 @@ mod tests {
 
     #[test]
     fn test_cidr_match() {
-        assert!(cidr_matches("142.250.185.46".parse().unwrap(), "142.250.0.0/16"));
-        assert!(cidr_matches("142.250.0.1".parse().unwrap(), "142.250.0.0/16"));
-        assert!(!cidr_matches("142.251.0.1".parse().unwrap(), "142.250.0.0/16"));
+        assert!(cidr_matches(
+            "142.250.185.46".parse().unwrap(),
+            "142.250.0.0/16"
+        ));
+        assert!(cidr_matches(
+            "142.250.0.1".parse().unwrap(),
+            "142.250.0.0/16"
+        ));
+        assert!(!cidr_matches(
+            "142.251.0.1".parse().unwrap(),
+            "142.250.0.0/16"
+        ));
     }
 
     #[test]

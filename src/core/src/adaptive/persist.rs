@@ -199,7 +199,10 @@ impl PersistenceManager {
         match self.load().await {
             Ok(config) => config,
             Err(_) => {
-                debug!("No existing config at {}, using defaults", self.path.display());
+                debug!(
+                    "No existing config at {}, using defaults",
+                    self.path.display()
+                );
                 let default = PersistenceConfig::default();
                 let mut current = self.config.lock().await;
                 *current = default.clone();
@@ -228,7 +231,11 @@ mod tests {
 
     fn temp_path(name: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
-        p.push(format!("byedpi_test_persist_{}_{}.json", name, std::process::id()));
+        p.push(format!(
+            "byedpi_test_persist_{}_{}.json",
+            name,
+            std::process::id()
+        ));
         p
     }
 
@@ -256,10 +263,7 @@ mod tests {
         assert_eq!(loaded.strategies.len(), 1);
         assert_eq!(loaded.strategies[0].id, 1);
         assert!(loaded.strategies[0].enabled);
-        assert_eq!(
-            loaded.strategies[0].params.get("split_pos"),
-            Some(&0.5)
-        );
+        assert_eq!(loaded.strategies[0].params.get("split_pos"), Some(&0.5));
 
         cleanup(&path);
     }
