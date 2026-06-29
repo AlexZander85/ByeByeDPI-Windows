@@ -25,6 +25,11 @@ Thumbs.db
 .beads/
 .ag/
 
+# === Review artifacts (keep local, don't push) ===
+docs/
+review/
+review2/
+
 # === Local secrets / temp ===
 *.env
 *.env.local
