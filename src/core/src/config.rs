@@ -246,7 +246,6 @@ impl Config {
             seq_spoof_enabled: true,
             fake_sni: self.desync.fake_sni.clone(),
             hop_tab_enabled: true,
-            event_tag_enabled: true,
             geo_routing_enabled: true,
             desync_port: 443,
             only_outbound: true,

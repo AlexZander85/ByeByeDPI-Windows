@@ -27,63 +27,6 @@ use pnet_packet::tcp::TcpFlags;
 use std::net::Ipv4Addr;
 use tracing::debug;
 
-/// Pre-allocated template для TCP сегментов.
-/// Уменьшает аллокации при построении inject пакетов.
-pub struct TcpSegmentWriter {
-    template: [u8; 40], // IP(20) + TCP(20)
-}
-
-impl TcpSegmentWriter {
-    /// Создаёт writer с базовым шаблоном.
-    pub fn new(src: Ipv4Addr, dst: Ipv4Addr, src_port: u16, dst_port: u16) -> Self {
-        let mut template = [0u8; 40];
-        // IP header
-        template[0] = 0x45;
-        template[8] = 64; // TTL
-        template[9] = 6; // TCP
-        template[12..16].copy_from_slice(&src.octets());
-        template[16..20].copy_from_slice(&dst.octets());
-        // TCP header
-        template[20..22].copy_from_slice(&src_port.to_be_bytes());
-        template[22..24].copy_from_slice(&dst_port.to_be_bytes());
-        template[32] = 0x50; // data offset = 5 (20 bytes)
-        template[34..36].copy_from_slice(&65535u16.to_be_bytes()); // window
-        Self { template }
-    }
-
-    /// Заполняет буфер TCP сегментом с указанными параметрами.
-    #[allow(clippy::too_many_arguments)]
-    pub fn write(
-        &self,
-        buf: &mut Vec<u8>,
-        seq: u32,
-        ack: u32,
-        flags: u8,
-        payload: &[u8],
-        ttl: u8,
-        ident: u16,
-    ) {
-        buf.clear();
-        buf.extend_from_slice(&self.template);
-        let total = 40 + payload.len();
-        buf[2..4].copy_from_slice(&(total as u16).to_be_bytes());
-        buf[4..6].copy_from_slice(&ident.to_be_bytes());
-        buf[8] = ttl;
-        buf[24..28].copy_from_slice(&seq.to_be_bytes());
-        buf[28..32].copy_from_slice(&ack.to_be_bytes());
-        buf[33] = flags;
-        buf.extend_from_slice(payload);
-        let csum = crate::desync::ipv4_checksum(&buf[..20]);
-        buf[10..12].copy_from_slice(&csum.to_be_bytes());
-        let tc = crate::desync::tcp_checksum_v4(
-            Ipv4Addr::from([buf[12], buf[13], buf[14], buf[15]]),
-            Ipv4Addr::from([buf[16], buf[17], buf[18], buf[19]]),
-            &buf[20..],
-        );
-        buf[36..38].copy_from_slice(&tc.to_be_bytes());
-    }
-}
-
 /// [Z1] MultiSplit: разделить первые N байт TCP payload на K сегментов.
 ///
 /// ## Принцип
@@ -598,7 +541,7 @@ pub fn oob_injection(
 
 // ==================== Вспомогательные функции ====================
 
-/// Строит полный IP+TCP пакет — одна аллокация вместо трёх.
+/// Строит полный IP+TCP пакет — alloc, zero-init, write, checksum, consume.
 #[allow(clippy::too_many_arguments)]
 fn build_ip_tcp_packet(
     src_ip: Ipv4Addr,
@@ -615,6 +558,7 @@ fn build_ip_tcp_packet(
 ) -> bytes::Bytes {
     let tcp_header_len = 20;
     let total_len = 20 + tcp_header_len + payload.len();
+
     let mut buf = vec![0u8; total_len];
 
     // IP header (bytes 0..20)

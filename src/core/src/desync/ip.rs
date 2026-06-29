@@ -10,6 +10,7 @@
 //! Адаптировано из [dpibreak](https://github.com/hufrea/dpibreak) и
 //! [zapret](https://github.com/bol-van/zapret).
 
+use crate::adaptive::ch_gen;
 use crate::desync::{ipv4_checksum, parse_ip_header, DesyncResult};
 use pnet_packet::ip::IpNextHeaderProtocol;
 use pnet_packet::ipv4::MutableIpv4Packet;
@@ -45,7 +46,7 @@ pub fn frag_overlap(packet: &[u8], fake_sni: &str, fake_ttl_offset: u8) -> Desyn
         return DesyncResult::passthrough();
     }
 
-    let fake_payload = build_fake_ch(fake_sni);
+    let fake_payload = ch_gen::build_client_hello_default(fake_sni);
 
     // Фрагмент 1: fake CH, offset=0, MF=1, TTL-1
     let frag1_ttl = ip.ttl.saturating_sub(fake_ttl_offset);
@@ -68,7 +69,8 @@ pub fn frag_overlap(packet: &[u8], fake_sni: &str, fake_ttl_offset: u8) -> Desyn
         20
     };
     let overlap_offset = tcp_header_len;
-    let frag2_offset_units = overlap_offset.div_ceil(8) as u16;
+    let overlap_offset_bytes = overlap_offset.next_multiple_of(8);
+    let frag2_offset_units = (overlap_offset_bytes / 8) as u16;
 
     let frag2 = build_ip_fragment(
         ip.src,
@@ -319,73 +321,6 @@ fn build_ip_fragment(
     bytes::Bytes::from(buf)
 }
 
-/// Строит fake TLS ClientHello для инъекции.
-fn build_fake_ch(sni: &str) -> Vec<u8> {
-    // Minimal TLS 1.3 ClientHello — только SNI extension
-    let sni_bytes = sni.as_bytes();
-    let sni_len = sni_bytes.len() as u16;
-
-    // SNI extension: type(2) + len(2) + ServerNameList(len(2) +
-    //   ServerName(type(1) + len(2) + name(sni_len)))
-    let server_name_list_len = 1 + 2 + sni_len;
-    let ext_data_len = 2 + server_name_list_len;
-    let ext_total_len = ext_data_len;
-
-    // Cipher suites
-    let cipher_suites: &[u8] = &[0x00, 0x02, 0x00, 0x01]; // TLS_ECDHE_RSA_... fake
-
-    let mut ch = Vec::new();
-
-    // ClientHello body: version(2) + random(32) + session_id(1+0)
-    //   + cipher_suites(2+len) + compression(1+1) + extensions(2+len)
-    ch.extend_from_slice(&[0x03, 0x03]); // TLS 1.2 legacy version
-
-    // Random (32 bytes) — фиксированный для детерминизма
-    for i in 0..32u8 {
-        ch.push(i.wrapping_mul(0x11));
-    }
-
-    // Session ID (empty)
-    ch.push(0x00);
-
-    // Cipher Suites
-    ch.extend_from_slice(&(cipher_suites.len() as u16).to_be_bytes());
-    ch.extend_from_slice(cipher_suites);
-
-    // Compression Methods: null
-    ch.push(0x01);
-    ch.push(0x00);
-
-    // Extensions
-    ch.extend_from_slice(&ext_total_len.to_be_bytes());
-
-    // SNI extension
-    ch.extend_from_slice(&[0x00, 0x00]); // type: sni
-    ch.extend_from_slice(&server_name_list_len.to_be_bytes());
-    ch.push(0x00); // ServerNameType: host_name
-    ch.extend_from_slice(&sni_len.to_be_bytes());
-    ch.extend_from_slice(sni_bytes);
-
-    // Заворачиваем в Handshake + Record Layer
-    let _ch_len = ch.len() as u16;
-
-    // Handshake header: type(1) + length(3)
-    let hs_len_bytes = (ch.len() as u32).to_be_bytes();
-
-    // Record: content_type(1) + version(2) + length(2)
-    let record_len = 4 + 1 + 3 + ch.len() as u16; // handshake header + body
-
-    let mut buf = Vec::with_capacity(5 + record_len as usize);
-    buf.push(0x16); // ContentType: Handshake
-    buf.extend_from_slice(&[0x03, 0x01]); // TLS 1.0 record version
-    buf.extend_from_slice(&record_len.to_be_bytes());
-    buf.push(0x01); // HandshakeType: ClientHello
-    buf.extend_from_slice(&hs_len_bytes[1..4]); // length (3 bytes)
-    buf.extend_from_slice(&ch);
-
-    buf
-}
-
 // ==================== P6: CandyTunnel IP техники ====================
 
 /// [CT3] TtlJitter: случайный TTL для каждого пакета.
@@ -400,7 +335,7 @@ pub fn ttl_jitter(packet: &[u8], base_ttl: Option<u8>) -> DesyncResult {
     };
 
     let current_ttl = base_ttl.unwrap_or(ip.ttl);
-    let jitter = (crate::desync::rand::random_u32() % 7) as i16 - 3;
+    let jitter = crate::desync::rand::random_range(0, 6) as i16 - 3;
     let new_ttl = (current_ttl as i16 + jitter).clamp(1, 255) as u8;
 
     if new_ttl == ip.ttl {
@@ -416,19 +351,20 @@ pub fn ttl_jitter(packet: &[u8], base_ttl: Option<u8>) -> DesyncResult {
     DesyncResult::modified_only(modified)
 }
 
-/// [CT4] DscpRandom: случайная DSCP метка.
+/// [CT4] DscpRandom: случайная DSCP метка per-connection.
 ///
 /// ## Принцип
 /// DPI анализирует DSCP для классификации трафика.
 /// Случайная DSCP метка сбивает классификацию.
-pub fn dscp_random(packet: &[u8]) -> DesyncResult {
+/// DSCP постоянный per-connection (не per-packet) — иначе anomaly.
+pub fn dscp_random(packet: &[u8], dscp_value: u8) -> DesyncResult {
     let _ip = match parse_ip_header(packet) {
         Some(h) => h,
         None => return DesyncResult::passthrough(),
     };
 
     let current_dscp = (packet[1] >> 2) & 0x3F;
-    let new_dscp = [0u8, 8, 16, 24, 32, 40, 48][(crate::desync::rand::random_u32() % 7) as usize];
+    let new_dscp = dscp_value & 0x3F;
 
     if new_dscp == current_dscp {
         return DesyncResult::passthrough();
@@ -447,41 +383,8 @@ pub fn dscp_random(packet: &[u8]) -> DesyncResult {
 /// [CT1] MutualSpoof: двусторонняя подмена source/dest IP.
 ///
 /// ## Принцип
-/// Подменяем source на dest. DPI может сбиться при обработке
-/// пакетов с "неправильным" source IP.
-pub fn mutual_spoof(packet: &[u8]) -> DesyncResult {
-    let ip = match parse_ip_header(packet) {
-        Some(h) => h,
-        None => return DesyncResult::passthrough(),
-    };
-
-    let mut modified = packet.to_vec();
-    let src = ip.src.octets();
-    let dst = ip.dst.octets();
-
-    modified[12..16].copy_from_slice(&dst);
-    modified[16..20].copy_from_slice(&src);
-
-    let checksum = ipv4_checksum(&modified[..20]);
-    modified[10..12].copy_from_slice(&checksum.to_be_bytes());
-
-    if modified[9] == 6 {
-        let new_src = Ipv4Addr::from(dst);
-        let new_dst = Ipv4Addr::from(src);
-        let tcp_start = 20;
-        let tcp_len = modified.len().saturating_sub(tcp_start);
-        if tcp_len > 18 {
-            modified[tcp_start + 16] = 0;
-            modified[tcp_start + 17] = 0;
-        }
-        let tcp_csum = crate::desync::tcp_checksum_v4(
-            new_src,
-            new_dst,
-            &modified[tcp_start..tcp_start + tcp_len],
-        );
-        modified[tcp_start + 16..tcp_start + 18].copy_from_slice(&tcp_csum.to_be_bytes());
-    }
-
-    debug!("[CT1] MutualSpoof: src={} → dst={}", ip.src, ip.dst);
-    DesyncResult::modified_only(modified)
+/// [CT1] MutualSpoof: удалён — пакет уходил обратно к клиенту, сервер не получал данных.
+pub fn mutual_spoof(_packet: &[u8]) -> DesyncResult {
+    tracing::warn!("MutualSpoof is removed — technique was broken by design (src=dst swap sends packet back to client)");
+    DesyncResult::passthrough()
 }

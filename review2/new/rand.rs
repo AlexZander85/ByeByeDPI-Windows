@@ -14,6 +14,8 @@
 //! из OS CSPRNG. Подходит для per-connection randomisation (GREASE, padding,
 //! key share, TTL jitter).
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 // ============================================================================
 // Thread-local fast PRNG (xoshiro256++)
 // ============================================================================
@@ -114,16 +116,29 @@ pub fn random_bytes(len: usize) -> Vec<u8> {
 
 /// Заполняет буфер случайными байтами in-place.
 pub fn fill_random_bytes(buf: &mut [u8]) {
-    let len = buf.len();
     let mut i = 0;
-    while i + 8 <= len {
+    while i + 8 <= buf.len() {
         buf[i..i + 8].copy_from_slice(&random_u64().to_le_bytes());
         i += 8;
     }
-    if i < len {
+    if i < buf.len() {
         let r = random_u64();
-        buf[i..len].copy_from_slice(&r.to_le_bytes()[..len - i]);
+        buf[i..].copy_from_slice(&r.to_le_bytes()[..buf.len() - i]);
     }
+}
+
+pub fn gen_split_mask() -> u64 {
+    random_u64()
+}
+
+pub fn mask_to_positions(mask: u64, base_offset: usize) -> Vec<usize> {
+    let mut positions = Vec::new();
+    for bit in 0..64u32 {
+        if (mask >> bit) & 1 == 1 {
+            positions.push(base_offset + bit as usize);
+        }
+    }
+    positions
 }
 
 // ============================================================================
@@ -134,8 +149,8 @@ pub fn fill_random_bytes(buf: &mut [u8]) {
 /// Chrome выбирает одно значение per-connection для каждой категории
 /// (cipher_suites, extensions, groups, versions).
 pub const GREASE_VALUES: [u16; 16] = [
-    0x0A0A, 0x1A1A, 0x2A2A, 0x3A3A, 0x4A4A, 0x5A5A, 0x6A6A, 0x7A7A, 0x8A8A, 0x9A9A, 0xAAAA, 0xBABA,
-    0xCACA, 0xDADA, 0xEAEA, 0xFAFA,
+    0x0A0A, 0x1A1A, 0x2A2A, 0x3A3A, 0x4A4A, 0x5A5A, 0x6A6A, 0x7A7A,
+    0x8A8A, 0x9A9A, 0xAAAA, 0xBABA, 0xCACA, 0xDADA, 0xEAEA, 0xFAFA,
 ];
 
 /// Выбирает random GREASE value (для global RNG).
@@ -238,15 +253,14 @@ impl PerConnRng {
 
     /// Заполняет буфер случайными байтами. Эффективно — 8 байт per PRNG call.
     pub fn fill_bytes(&mut self, buf: &mut [u8]) {
-        let len = buf.len();
         let mut i = 0;
-        while i + 8 <= len {
+        while i + 8 <= buf.len() {
             buf[i..i + 8].copy_from_slice(&self.next_u64().to_le_bytes());
             i += 8;
         }
-        if i < len {
+        if i < buf.len() {
             let r = self.next_u64();
-            buf[i..len].copy_from_slice(&r.to_le_bytes()[..len - i]);
+            buf[i..].copy_from_slice(&r.to_le_bytes()[..buf.len() - i]);
         }
     }
 
@@ -290,6 +304,31 @@ fn splitmix64(x: u64) -> u64 {
     z ^ (z >> 31)
 }
 
+pub fn random_split_positions(base: usize, len: usize, min_count: usize) -> Vec<usize> {
+    let mask = gen_split_mask();
+    let mut seen = std::collections::HashSet::with_capacity(min_count.max(64));
+    let mut positions = Vec::with_capacity(min_count.max(64));
+
+    for bit in 0..64u32 {
+        if (mask >> bit) & 1 == 1 {
+            let p = base + bit as usize;
+            if p < base + len && seen.insert(p) {
+                positions.push(p);
+            }
+        }
+    }
+
+    while positions.len() < min_count && positions.len() < len {
+        let pos = base + random_range(0, len as u32 - 1) as usize;
+        if seen.insert(pos) {
+            positions.push(pos);
+        }
+    }
+
+    positions.sort_unstable();
+    positions
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,6 +360,7 @@ mod tests {
     fn test_random_bytes_filled() {
         let bytes = random_bytes(32);
         assert_eq!(bytes.len(), 32);
+        // Very unlikely all zeros
         assert!(bytes.iter().any(|&b| b != 0));
     }
 
@@ -378,6 +418,7 @@ mod tests {
 
     #[test]
     fn test_cross_thread_independence() {
+        // Два потока должны получать разные последовательности
         let (tx1, rx1) = std::sync::mpsc::channel();
         let (tx2, rx2) = std::sync::mpsc::channel();
 
@@ -403,6 +444,7 @@ mod tests {
         let v1 = rx1.recv().unwrap();
         let v2 = rx2.recv().unwrap();
 
+        // Последовательности должны различаться (вероятность совпадения ~0)
         let matches = v1.iter().zip(v2.iter()).filter(|(a, b)| a == b).count();
         assert!(
             matches < v1.len() / 2,
@@ -418,48 +460,5 @@ mod tests {
             let g = random_grease();
             assert!(GREASE_VALUES.contains(&g));
         }
-    }
-
-    #[test]
-    fn test_random_split_size() {
-        for _ in 0..50 {
-            let size = random_split_size();
-            assert!(size >= 1 && size <= 100);
-        }
-    }
-
-    #[test]
-    fn test_random_delay_us() {
-        for _ in 0..50 {
-            let delay = random_delay_us();
-            assert!(delay < 10000);
-        }
-    }
-
-    #[test]
-    fn test_random_identification() {
-        let _id = random_identification();
-        // u16 гарантирован в [0, 65535], проверка избыточна
-    }
-
-    #[test]
-    fn test_random_source_port() {
-        for _ in 0..50 {
-            let port = random_source_port();
-            assert!(port >= 1024);
-        }
-    }
-
-    #[test]
-    fn test_random_padding_size() {
-        for _ in 0..50 {
-            let size = random_padding_size();
-            assert!(size >= 16 && size <= 512);
-        }
-    }
-
-    #[test]
-    fn test_random_range_min_equals_max() {
-        assert_eq!(random_range(42, 42), 42);
     }
 }

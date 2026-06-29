@@ -4,8 +4,27 @@
 //! 1. **Pipeline** (по умолчанию): каждая техника видит modified packet предыдущей.
 //! 2. **Concurrent**: каждая техника видит оригинальный пакет.
 
-use crate::desync::{crypto, http, ip, obfs, quic, tcp, tls};
+use crate::adaptive::auto_tune::TuneParams;
+use crate::desync::{http, ip, obfs, quic, tcp, tls};
 use crate::desync::{DesyncConfig, DesyncResult, DesyncTechnique};
+
+/// Override параметры для одного вызова apply() — из AutoTune.
+#[derive(Debug, Clone, Default)]
+pub struct ConfigOverride {
+    pub split_size: Option<usize>,
+    pub split_count: Option<usize>,
+    pub fake_ttl_offset: Option<u8>,
+}
+
+impl From<TuneParams> for ConfigOverride {
+    fn from(params: TuneParams) -> Self {
+        Self {
+            split_size: params.split_size,
+            split_count: params.split_count,
+            fake_ttl_offset: params.fake_ttl_offset,
+        }
+    }
+}
 
 /// Стейт pipeline — передаётся между техниками.
 #[derive(Debug, Clone)]
@@ -126,27 +145,40 @@ impl DesyncGroup {
         self.pipeline_mode = enabled;
     }
 
-    pub fn apply(&self, packet: &bytes::Bytes) -> DesyncResult {
+    /// Применяет все техники.
+    /// - `dscp_value` — per-connection DSCP для DscpRandom
+    /// - `override_params` — переопределения параметров из AutoTune
+    pub fn apply(
+        &self,
+        packet: &bytes::Bytes,
+        dscp_value: Option<u8>,
+        override_params: Option<ConfigOverride>,
+    ) -> DesyncResult {
         if self.pipeline_mode {
-            self.apply_pipeline(packet.clone())
+            self.apply_pipeline(packet.clone(), dscp_value, override_params)
         } else {
-            self.apply_concurrent(packet)
+            self.apply_concurrent(packet, dscp_value)
         }
     }
 
-    fn apply_concurrent(&self, packet: &bytes::Bytes) -> DesyncResult {
+    fn apply_concurrent(&self, packet: &bytes::Bytes, _dscp_value: Option<u8>) -> DesyncResult {
         let mut result = DesyncResult::passthrough();
         for technique in &self.techniques {
-            let r = self.apply_single(technique, packet);
+            let r = self.apply_single_safe(technique, packet);
             result.merge(r);
         }
         result
     }
 
-    fn apply_pipeline(&self, packet: bytes::Bytes) -> DesyncResult {
+    fn apply_pipeline(
+        &self,
+        packet: bytes::Bytes,
+        dscp_value: Option<u8>,
+        override_params: Option<ConfigOverride>,
+    ) -> DesyncResult {
         let mut state = PipelineState::from_packet(packet);
         for technique in &self.techniques {
-            self.apply_to_state(technique, &mut state);
+            self.apply_to_state(technique, &mut state, dscp_value, override_params.as_ref());
             if state.drop {
                 break;
             }
@@ -154,8 +186,31 @@ impl DesyncGroup {
         state.into_result()
     }
 
-    fn apply_to_state(&self, technique: &DesyncTechnique, state: &mut PipelineState) {
-        let c = &self.config;
+    fn apply_to_state(
+        &self,
+        technique: &DesyncTechnique,
+        state: &mut PipelineState,
+        dscp_value: Option<u8>,
+        override_params: Option<&ConfigOverride>,
+    ) {
+        // Применяем override параметры если есть, иначе используем config как есть
+        let config = override_params.map_or_else(
+            || self.config.clone(),
+            |p| {
+                let mut c = self.config.clone();
+                if let Some(v) = p.split_size {
+                    c.split_size = v;
+                }
+                if let Some(v) = p.split_count {
+                    c.split_count = v;
+                }
+                if let Some(v) = p.fake_ttl_offset {
+                    c.fake_ttl_offset = v;
+                }
+                c
+            },
+        );
+        let c = &config;
         match technique {
             DesyncTechnique::FakeSni => {
                 let result = tcp::fake_sni(&state.packet, &c.fake_sni, c.fake_ttl_offset);
@@ -192,7 +247,17 @@ impl DesyncGroup {
                 self.merge_into_state(state, result);
             }
             DesyncTechnique::BadChecksum => {
-                self.merge_into_state(state, ip::bad_checksum(&state.packet));
+                // BadChecksum applies ONLY to inject packets, NOT to state.packet.
+                // Original packet must keep valid checksum to reach the server.
+                state.injects = state
+                    .injects
+                    .iter()
+                    .map(|pkt| {
+                        ip::bad_checksum(pkt)
+                            .modified
+                            .unwrap_or_else(|| pkt.clone())
+                    })
+                    .collect();
             }
             DesyncTechnique::TtlManipulation => {
                 self.merge_into_state(state, ip::ttl_manipulation(&state.packet, 64));
@@ -204,7 +269,7 @@ impl DesyncGroup {
                 );
             }
             DesyncTechnique::SniMasking => {
-                self.merge_into_state(state, tls::sni_masking(&state.packet, 0x41));
+                tracing::warn!("SniMasking is deprecated — server cannot restore masked SNI. Use FakeSni instead.");
             }
             DesyncTechnique::TlsRecordRewrap => {
                 self.merge_into_state(
@@ -225,13 +290,15 @@ impl DesyncGroup {
                 self.merge_into_state(state, ip::rst_drop_ip_id(&state.packet));
             }
             DesyncTechnique::DscpRandom => {
-                self.merge_into_state(state, ip::dscp_random(&state.packet));
+                let dscp =
+                    dscp_value.unwrap_or_else(|| crate::desync::rand::random_range(0, 48) as u8);
+                self.merge_into_state(state, ip::dscp_random(&state.packet, dscp));
             }
             DesyncTechnique::TtlJitter => {
                 self.merge_into_state(state, ip::ttl_jitter(&state.packet, None));
             }
             _ => {
-                self.merge_into_state(state, self.apply_single(technique, &state.packet));
+                self.merge_into_state(state, self.apply_single_safe(technique, &state.packet));
             }
         }
     }
@@ -244,6 +311,23 @@ impl DesyncGroup {
         state.injects.extend(result.inject);
         if result.drop {
             state.drop = true;
+        }
+    }
+
+    /// Безопасная обёртка над apply_single — ловит паники.
+    fn apply_single_safe(
+        &self,
+        technique: &DesyncTechnique,
+        packet: &bytes::Bytes,
+    ) -> DesyncResult {
+        use std::panic::AssertUnwindSafe;
+        match std::panic::catch_unwind(AssertUnwindSafe(|| self.apply_single(technique, packet))) {
+            Ok(result) => result,
+            Err(panic) => {
+                let msg = panic.downcast_ref::<&str>().unwrap_or(&"unknown panic");
+                tracing::error!("Desync technique {:?} panicked: {}", technique.name(), msg);
+                DesyncResult::passthrough()
+            }
         }
     }
 
@@ -302,12 +386,15 @@ impl DesyncGroup {
             }
             DesyncTechnique::RstDropIpId => ip::rst_drop_ip_id(packet),
             DesyncTechnique::TtlJitter => ip::ttl_jitter(packet, None),
-            DesyncTechnique::DscpRandom => ip::dscp_random(packet),
+            DesyncTechnique::DscpRandom => {
+                let dscp = crate::desync::rand::random_range(0, 48) as u8; // stateless path — random per-packet
+                ip::dscp_random(packet, dscp)
+            }
             DesyncTechnique::MutualSpoof => ip::mutual_spoof(packet),
             DesyncTechnique::TlsRecordFrag => tls::tls_record_frag(packet, 5, c.fake_ttl_offset),
             DesyncTechnique::TlsRecordPad => tls::tls_record_pad(packet, 32, c.fake_ttl_offset),
             DesyncTechnique::SniMicrofrag => tls::sni_microfrag(packet, 5, c.fake_ttl_offset),
-            DesyncTechnique::SniMasking => tls::sni_masking(packet, 0x41),
+            DesyncTechnique::SniMasking => DesyncResult::passthrough(),
             DesyncTechnique::TlsRecordRewrap => {
                 tls::tls_record_rewrap(packet, 100, c.fake_ttl_offset)
             }
@@ -330,7 +417,10 @@ impl DesyncGroup {
             DesyncTechnique::Http11Pipeline => {
                 http::http11_pipeline(packet, &c.fake_sni, c.fake_ttl_offset)
             }
-            DesyncTechnique::ContentLengthFuzz => http::content_length_fuzz(packet, 99999),
+            DesyncTechnique::ContentLengthFuzz => {
+                let fake_len = crate::desync::rand::random_range(100_000, 2_000_000) as usize;
+                http::content_length_fuzz(packet, fake_len)
+            }
             DesyncTechnique::HttpUpgradeAbuse => http::http_upgrade_abuse(packet),
             DesyncTechnique::QuicBlocking => quic::quic_blocking(packet),
             DesyncTechnique::QuicVersionDowngrade => {
@@ -348,8 +438,8 @@ impl DesyncGroup {
             DesyncTechnique::XorFirst => obfs::xor_first(packet, 4, 0xFF),
             DesyncTechnique::WgObfs => obfs::wg_obfs(packet, c.fake_ttl_offset),
             DesyncTechnique::ChaCha20 => {
-                let key = [0x42u8; 32];
-                crypto::chacha20_encrypt(packet, &key)
+                tracing::warn!("ChaCha20 with hardcoded key is disabled — broken by design for transparent proxy");
+                DesyncResult::passthrough()
             }
             DesyncTechnique::ReverseFragmentOrder => {
                 let r = tcp::multisplit(packet, c.split_size, c.split_count, c.fake_ttl_offset);

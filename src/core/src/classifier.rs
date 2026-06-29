@@ -92,6 +92,32 @@ impl Classifier {
                     payload_len: packet.len().saturating_sub(payload_offset),
                 };
 
+                // Content-based classification (DPI) before port fallback
+                let payload = &packet[payload_offset..];
+                if payload.len() >= 5 {
+                    // TLS ClientHello: 0x16 0x03 0x01-0x03
+                    if payload[0] == 0x16 && payload[1] == 0x03 && payload[2] <= 0x03 {
+                        return Classification::Tls(cp);
+                    }
+                    // HTTP methods
+                    if payload.starts_with(b"GET ")
+                        || payload.starts_with(b"POST ")
+                        || payload.starts_with(b"PUT ")
+                        || payload.starts_with(b"HEAD ")
+                        || payload.starts_with(b"DELETE ")
+                        || payload.starts_with(b"CONNECT ")
+                        || payload.starts_with(b"OPTIONS ")
+                    {
+                        return Classification::Http(cp);
+                    }
+                    // HTTP/2 connection preface
+                    if payload.len() >= 24 && &payload[..24] == b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+                    {
+                        return Classification::Http(cp);
+                    }
+                }
+
+                // Port-based fallback
                 match dst_port {
                     443 => Classification::Tls(cp),
                     80 => Classification::Http(cp),
@@ -119,6 +145,12 @@ impl Classifier {
                     payload_offset,
                     payload_len: packet.len().saturating_sub(payload_offset),
                 };
+
+                // Content-based QUIC detection (long header: first bit = 1)
+                let payload = &packet[payload_offset..];
+                if !payload.is_empty() && (payload[0] & 0x80) != 0 {
+                    return Classification::Quic(cp);
+                }
 
                 match dst_port {
                     53 => Classification::Dns(cp),

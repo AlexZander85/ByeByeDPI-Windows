@@ -28,7 +28,7 @@
 
 use crate::adaptive::ch_gen;
 use crate::adaptive::hop_tab::HopTab;
-use crate::conntrack::Conntrack;
+use crate::conntrack::{ConnKey, Conntrack};
 use anyhow::Result;
 use pnet_packet::ip::IpNextHeaderProtocols;
 use pnet_packet::ipv4::MutableIpv4Packet;
@@ -86,7 +86,16 @@ pub fn build_seq_spoof_packet(
     _conntrack: &Conntrack,
     hop_tab: &HopTab,
 ) -> Result<SeqSpoofResult> {
-    let fake_ch = ch_gen::build_client_hello(fake_sni);
+    let fake_ch =
+        if let Some(entry) = _conntrack.get(&ConnKey::new(src_ip, dst_ip, src_port, dst_port)) {
+            let mut rng = entry
+                .rng
+                .clone()
+                .unwrap_or_else(|| crate::desync::rand::PerConnRng::new(0));
+            ch_gen::build_client_hello(fake_sni, &mut rng)
+        } else {
+            ch_gen::build_client_hello_default(fake_sni)
+        };
 
     // Определяем fake TTL из HopTab
     let fake_ttl = hop_tab.fake_ttl_for_ip(&dst_ip).unwrap_or(64); // fallback, если нет данных
@@ -258,7 +267,7 @@ pub fn build_seq_spoof_packet_badsum(
     dst_port: u16,
     client_isn: u32,
 ) -> Result<SeqSpoofResult> {
-    let fake_ch = ch_gen::build_client_hello(fake_sni);
+    let fake_ch = ch_gen::build_client_hello_default(fake_sni);
 
     let mut packet = build_fake_tcp_packet(
         src_ip,
@@ -374,6 +383,7 @@ mod tests {
             rtt_us: 50000,
             state: ConnState::SynReceived,
             desync_applied: false,
+            dscp_spoof: 0,
             strategy_id: 0,
             last_activity: Instant::now(),
             dup_ack_count: 0,
@@ -402,9 +412,10 @@ mod tests {
         )
         .unwrap();
 
-        // IP(20) + TCP(20) + TLS CH(517) = 557
-        let expected_size = 20 + 20 + ch_gen::CLIENT_HELLO_SIZE;
-        assert_eq!(result.fake_packet.len(), expected_size);
+        // IP(20) + TCP(20) + TLS CH(512..4096) = 552..4136
+        let packet_len = result.fake_packet.len();
+        assert!(packet_len >= 552, "Packet too small: {} bytes", packet_len);
+        assert!(packet_len <= 4136, "Packet too large: {} bytes", packet_len);
     }
 
     #[test]
@@ -527,8 +538,9 @@ mod tests {
         )
         .unwrap();
 
-        let expected_size = 20 + 20 + ch_gen::CLIENT_HELLO_SIZE;
-        assert_eq!(result.fake_packet.len(), expected_size);
+        let packet_len = result.fake_packet.len();
+        assert!(packet_len >= 552, "Packet too small: {} bytes", packet_len);
+        assert!(packet_len <= 4136, "Packet too large: {} bytes", packet_len);
     }
 
     #[test]

@@ -26,7 +26,6 @@ pub mod group;
 pub mod http;
 pub mod ip;
 pub mod obfs;
-pub mod pool;
 pub mod quic;
 pub mod rand;
 pub mod segment_plan;
@@ -126,9 +125,9 @@ impl DesyncResult {
         self.modified.as_ref().map(|b| b.as_ref())
     }
 
-    /// Inject как &[&[u8]] (zero-copy через Deref).
-    pub fn inject_slices(&self) -> Vec<&[u8]> {
-        self.inject.iter().map(|b| b.as_ref()).collect()
+    /// Inject как срез Bytes (zero-copy через Deref).
+    pub fn inject_slices(&self) -> &[bytes::Bytes] {
+        &self.inject
     }
 }
 
@@ -476,22 +475,23 @@ impl Default for DesyncConfig {
 }
 
 /// Вспомогательная функция: вычисляет IP checksum.
-/// Вычисляет IP checksum (unrolled 20-byte version).
+/// Корректно обрабатывает IP headers любой длины (включая IP options).
 pub fn ipv4_checksum(header: &[u8]) -> u16 {
     debug_assert!(header.len() >= 20);
-    // Unrolled: 5 x 32-bit words вместо 10 x 16-bit chunks
-    let w0 = u32::from_be_bytes([header[0], header[1], header[2], header[3]]);
-    let w1 = u32::from_be_bytes([header[4], header[5], header[6], header[7]]);
-    let w2 = u32::from_be_bytes([header[8], header[9], header[10], header[11]]);
-    let w3 = u32::from_be_bytes([header[12], header[13], header[14], header[15]]);
-    let w4 = u32::from_be_bytes([header[16], header[17], header[18], header[19]]);
-    let mut sum = (w0 >> 16) + (w0 & 0xFFFF);
-    sum += (w1 >> 16) + (w1 & 0xFFFF);
-    sum += (w2 >> 16) + (w2 & 0xFFFF);
-    sum += (w3 >> 16) + (w3 & 0xFFFF);
-    sum += (w4 >> 16) + (w4 & 0xFFFF);
-    sum = (sum >> 16) + (sum & 0xFFFF);
-    sum = (sum >> 16) + (sum & 0xFFFF);
+    let ihl = (header[0] & 0x0F) as usize * 4;
+    let header = &header[..ihl.min(header.len())];
+    let mut sum: u32 = 0;
+    let mut i = 0;
+    while i + 1 < header.len() {
+        sum += u16::from_be_bytes([header[i], header[i + 1]]) as u32;
+        i += 2;
+    }
+    if !header.len().is_multiple_of(2) {
+        sum += (header[header.len() - 1] as u32) << 8;
+    }
+    while sum >> 16 != 0 {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
     !(sum as u16)
 }
 
@@ -575,7 +575,8 @@ pub fn build_ip_packet(
     payload: &[u8],
 ) -> bytes::Bytes {
     let total_len = 20 + payload.len();
-    let mut buf = vec![0u8; total_len];
+    let mut buf = bytes::BytesMut::with_capacity(total_len);
+    buf.resize(total_len, 0);
 
     {
         let mut ip = MutableIpv4Packet::new(&mut buf).unwrap();
@@ -594,5 +595,5 @@ pub fn build_ip_packet(
 
     let checksum = ipv4_checksum(&buf[..20]);
     buf[10..12].copy_from_slice(&checksum.to_be_bytes());
-    bytes::Bytes::from(buf)
+    buf.freeze()
 }

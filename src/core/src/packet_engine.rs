@@ -19,7 +19,9 @@
 //! - `set_param(param, u64)` — значения теперь `u64`
 
 use anyhow::{Context, Result};
+use arc_swap::ArcSwap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 use windivert::prelude::WinDivertParam;
 use windivert::prelude::*;
@@ -45,7 +47,7 @@ pub enum EngineMode {
 
 /// Абстракция над WinDivert + raw socket для перехвата и инъекции.
 pub struct PacketEngine {
-    divert: Option<WinDivert<NetworkLayer>>,
+    divert: ArcSwap<Option<WinDivert<NetworkLayer>>>,
     raw_sock: Option<RawSocketTx>,
     stats: PacketStats,
     mode: EngineMode,
@@ -99,10 +101,10 @@ impl PacketEngine {
 
         // WinDivert tuning
         divert
-            .set_param(WinDivertParam::QueueLength, 8192)
+            .set_param(WinDivertParam::QueueLength, 65535)
             .context("Failed to set QueueLength")?;
         divert
-            .set_param(WinDivertParam::QueueTime, 2000)
+            .set_param(WinDivertParam::QueueTime, 500)
             .context("Failed to set QueueTime")?;
 
         let raw_sock = match unsafe { RawSocketTx::new() } {
@@ -124,7 +126,7 @@ impl PacketEngine {
         debug!("PacketEngine initialized with filter: {}", filter);
 
         Ok(Self {
-            divert: Some(divert),
+            divert: ArcSwap::new(Arc::new(Some(divert))),
             raw_sock,
             stats: PacketStats::new(),
             mode: EngineMode::WinDivert,
@@ -136,7 +138,7 @@ impl PacketEngine {
         let raw_sock = unsafe { RawSocketTx::new() }.ok();
 
         Self {
-            divert: None,
+            divert: ArcSwap::new(Arc::new(None)),
             raw_sock,
             stats: PacketStats::new(),
             mode: EngineMode::ApiOnly,
@@ -153,7 +155,8 @@ impl PacketEngine {
         &self,
         buffer: &mut [u8],
     ) -> Result<(bytes::Bytes, WinDivertAddress<NetworkLayer>)> {
-        let Some(ref divert) = self.divert else {
+        let guard = self.divert.load();
+        let Some(ref divert) = **guard else {
             anyhow::bail!("WinDivert not initialized (API-only mode)");
         };
         let packet = divert.recv(buffer).context("WinDivert recv failed")?;
@@ -170,7 +173,8 @@ impl PacketEngine {
         packet: &[u8],
         addr: &WinDivertAddress<NetworkLayer>,
     ) -> Result<u32> {
-        let Some(ref divert) = self.divert else {
+        let guard = self.divert.load();
+        let Some(ref divert) = **guard else {
             anyhow::bail!("WinDivert not initialized (API-only mode)");
         };
         // Создаём временный WinDivertPacket из предоставленных данных
@@ -206,7 +210,8 @@ impl PacketEngine {
         packet: &[u8],
         addr: &WinDivertAddress<NetworkLayer>,
     ) -> Result<u32> {
-        let Some(ref divert) = self.divert else {
+        let guard = self.divert.load();
+        let Some(ref divert) = **guard else {
             anyhow::bail!("WinDivert not initialized (API-only mode)");
         };
         let mut impostor_addr = addr.clone();
@@ -229,23 +234,23 @@ impl PacketEngine {
     ///
     /// Вызывается при изменении blacklist/whitelist.
     /// Создаёт новый WinDivert handle (старый закрывается при drop).
-    pub fn update_filter(&mut self, filter: &str) -> Result<()> {
+    pub fn update_filter(&self, filter: &str) -> Result<()> {
         let new_divert = WinDivert::network(filter, WINDIVERT_PRIORITY, WinDivertFlags::default())
             .context("Failed to update WinDivert filter")?;
         new_divert
-            .set_param(WinDivertParam::QueueLength, 8192)
+            .set_param(WinDivertParam::QueueLength, 65535)
             .context("Failed to set QueueLength on new handle")?;
         new_divert
-            .set_param(WinDivertParam::QueueTime, 2000)
+            .set_param(WinDivertParam::QueueTime, 500)
             .context("Failed to set QueueTime on new handle")?;
-        self.divert = Some(new_divert);
+        self.divert.store(Arc::new(Some(new_divert)));
         debug!("WinDivert filter updated: {}", filter);
         Ok(())
     }
 
     /// Проверяет, инициализирован ли WinDivert.
     pub fn has_divert(&self) -> bool {
-        self.divert.is_some()
+        self.divert.load().is_some()
     }
 
     /// Проверяет, доступен ли raw socket.

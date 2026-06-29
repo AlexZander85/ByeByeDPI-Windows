@@ -1,0 +1,31 @@
+# Patch: engine/mod.rs
+#
+# 1. Использует 4-tuple для PerConnRng conn_id (вместо только dst_ip).
+# 2. Pass PerConnRng через DesyncGroup (future-proof — пока DesyncGroup
+#    не принимает RNG, fake CH внутри desync/ip.rs использует default).
+#
+# Применить: cd src/core/src/engine && patch mod.rs < engine_mod.rs.patch
+
+--- a/src/core/src/engine/mod.rs
++++ b/src/core/src/engine/mod.rs
+@@ -397,7 +397,17 @@
+             let key = ConnKey::new(cp.src_ip, cp.dst_ip, cp.src_port, cp.dst_port);
+
+             if self.conntrack.get(&key).is_none() {
++                // 4-tuple conn_id для per-connection RNG — обеспечивает
++                // уникальность random-полей между параллельными соединениями
++                let conn_id = (cp.src_ip.to_bits() as u64)
++                    ^ ((cp.dst_ip.to_bits() as u64) << 32)
++                    ^ ((cp.src_port as u64) << 48)
++                    ^ (cp.dst_port as u64);
++
+                 let entry = ConntrackEntry {
+                     client_isn: 0, server_isn: 0, client_seq: 0, server_seq: 0,
+                     client_ack: 0, server_ack: 0, rtt_us: 0,
+                     state: ConnState::SynSent, desync_applied: false, strategy_id: 0,
+                     last_activity: Instant::now(), dup_ack_count: 0,
+-                    rng: Some(crate::desync::rand::PerConnRng::new(cp.dst_ip.to_bits() as u64)),
++                    rng: Some(crate::desync::rand::PerConnRng::new(conn_id)),
+                 };
+                 self.conntrack.insert(key, entry);
+             } else {

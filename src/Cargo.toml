@@ -38,6 +38,9 @@ windows = { version = "0.62", features = [
 dashmap = "6"
 moka = { version = "0.12", features = ["future", "sync"] }
 
+# Lock-free Arc swap for hot-reload config
+arc-swap = "1"
+
 # Packet parsing (only packet module, no capture — avoids Packet.lib dependency)
 pnet_packet = "0.35"
 

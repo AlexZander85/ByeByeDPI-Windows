@@ -50,7 +50,11 @@ impl HopTab {
     }
 
     fn hash(ip: u32) -> usize {
-        let mut h = ip.wrapping_mul(0x01000193);
+        let mut h = ip;
+        h ^= h >> 16;
+        h = h.wrapping_mul(0x45d9f3b);
+        h ^= h >> 16;
+        h = h.wrapping_mul(0x45d9f3b);
         h ^= h >> 16;
         (h as usize) & HOPTAB_MASK
     }
@@ -73,7 +77,7 @@ impl HopTab {
     pub fn fake_ttl(&self, dst_ip: u32) -> Option<u8> {
         self.get(dst_ip).map(|hops| {
             if hops <= 2 {
-                return 0;
+                return 1;
             }
             (hops - 1).clamp(2, 64)
         })

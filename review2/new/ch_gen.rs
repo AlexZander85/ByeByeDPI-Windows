@@ -158,7 +158,10 @@ pub fn build_client_hello(sni: &str, rng: &mut PerConnRng) -> Vec<u8> {
     // 4. Wrap in handshake header
     let handshake = wrap_handshake(&body_with_padding);
 
-    wrap_record(&handshake)
+    // 5. Wrap in TLS record layer
+    let record = wrap_record(&handshake);
+
+    record
 }
 
 /// Fallback — строит ClientHello с временным PerConnRng.
@@ -296,8 +299,12 @@ pub fn mask_sni(_client_hello: &[u8], white_domain: &str) -> Option<Vec<u8>> {
 /// Порядок extensions соответствует Chrome 130+:
 /// GREASE → SNI → EMS → Renego → Groups → Ticket → ALPN → SCT → SigAlgs →
 /// KeyShare → PSK_KEX → Versions → CompressCert → AppSettings → GREASE
-fn build_extensions(sni: &str, rng: &mut PerConnRng, grease: (u16, u16, u16, u16)) -> Vec<u8> {
-    let (_cipher_g, ext_g, group_g, ver_g) = grease;
+fn build_extensions(
+    sni: &str,
+    rng: &mut PerConnRng,
+    grease: (u16, u16, u16, u16),
+) -> Vec<u8> {
+    let (cipher_g, ext_g, group_g, ver_g) = grease;
     let mut ext = Vec::with_capacity(1400);
 
     // 1. GREASE extension (first, empty data — Chrome behavior)
@@ -702,7 +709,7 @@ fn wrap_handshake(body: &[u8]) -> Vec<u8> {
     let body_len = body.len();
     let mut hs = Vec::with_capacity(4 + body_len);
     hs.push(0x01); // ClientHello
-                   // 3-byte length
+    // 3-byte length
     hs.push(((body_len >> 16) & 0xFF) as u8);
     hs.push(((body_len >> 8) & 0xFF) as u8);
     hs.push((body_len & 0xFF) as u8);
@@ -728,7 +735,6 @@ fn wrap_record(handshake: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::desync::rand::GREASE_VALUES;
 
     fn test_rng() -> PerConnRng {
         PerConnRng::new(42)
@@ -739,7 +745,7 @@ mod tests {
         let mut rng = test_rng();
         let ch = build_client_hello("example.com", &mut rng);
         assert!(ch.len() >= 512, "CH too small: {} bytes", ch.len());
-        assert!(ch.len() <= 4500, "CH too large: {} bytes", ch.len());
+        assert!(ch.len() <= 4096, "CH too large: {} bytes", ch.len());
         assert_eq!(ch[0], 0x16); // TLS Handshake
         assert_eq!(ch[5], 0x01); // ClientHello
     }
@@ -811,7 +817,7 @@ mod tests {
         // Check that at least one GREASE value appears in the CH
         let has_grease = GREASE_VALUES
             .iter()
-            .any(|g: &u16| ch.windows(2).any(|w| w == g.to_be_bytes()));
+            .any(|g| ch.windows(2).any(|w| w == g.to_be_bytes()));
         assert!(has_grease, "No GREASE value found in CH");
     }
 
@@ -852,11 +858,7 @@ mod tests {
 
         // KEM ID (P-256 = 0x0010) at offset 4 + 4 (config version + length) + 1 (config_id)
         let kem_offset = 4 + 4 + 1;
-        assert_eq!(
-            ech_ext[kem_offset..kem_offset + 2],
-            [0x00, 0x10],
-            "Wrong KEM ID"
-        );
+        assert_eq!(ech_ext[kem_offset..kem_offset + 2], [0x00, 0x10], "Wrong KEM ID");
     }
 
     #[test]
@@ -872,7 +874,11 @@ mod tests {
         let config_id_2 = ech2[8];
 
         // payload (последние N байт) должен различаться
-        let differences = ech1.iter().zip(ech2.iter()).filter(|(a, b)| a != b).count();
+        let differences = ech1
+            .iter()
+            .zip(ech2.iter())
+            .filter(|(a, b)| a != b)
+            .count();
         assert!(
             differences > 5,
             "ECH extensions too similar — per-conn randomisation broken (config_id_1={}, config_id_2={}, diffs={})",
@@ -895,12 +901,11 @@ mod tests {
         let payload_len_pos = enc_len_pos + 2;
         let payload_start = payload_len_pos + 2;
 
-        let payload_len =
-            u16::from_be_bytes([ech_ext[payload_len_pos], ech_ext[payload_len_pos + 1]]) as usize;
-        assert!(
-            payload_len >= 16 && payload_len <= 256,
-            "Payload length out of range"
-        );
+        let payload_len = u16::from_be_bytes([
+            ech_ext[payload_len_pos],
+            ech_ext[payload_len_pos + 1],
+        ]) as usize;
+        assert!(payload_len >= 16 && payload_len <= 256, "Payload length out of range");
 
         let payload = &ech_ext[payload_start..payload_start + payload_len];
         let non_zero = payload.iter().filter(|&&b| b != 0).count();
@@ -919,7 +924,11 @@ mod tests {
         let ch2 = build_client_hello("example.com", &mut rng2);
 
         // CHs should differ (different random fields + different GREASE)
-        let differences = ch1.iter().zip(ch2.iter()).filter(|(a, b)| a != b).count();
+        let differences = ch1
+            .iter()
+            .zip(ch2.iter())
+            .filter(|(a, b)| a != b)
+            .count();
         assert!(
             differences > 10,
             "CHs too similar — per-conn randomisation may be broken: {} differences",

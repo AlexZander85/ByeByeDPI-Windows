@@ -1,4 +1,4 @@
-# FreeDPI Windows — Архитектура (Rust, v3.0)
+# FreeDPI Windows — Архитектура (Rust, v1.0)
 
 **Всего техник: ~180**
 - 45 — портировано из ByeDPI Android (TCP desync, TLS, QUIC, DNS, proxy fallback)
@@ -19,7 +19,7 @@
 - **6 — из DPIReaper (Sentinel file, Task Scheduler, UWP LoopbackExempt, Firewall rules, WinHTTP proxy, PAC server)**
 - **3 — из qeli (Poisson shaping, supervisor/worker, multiqueue)**
 - **1 — из dpimyass (XOR first N bytes)**
-- **3 — из OpenLogi (thread-local hot path, synthetic event tagging, interprocess IPC)**
+- **3 — из OpenLogi (thread-local hot path, ~event tagging~ impostor flag, interprocess IPC)**
 - **2 — из rust-no-dpi-socks (byte-by-byte first packet, unidirectional frag)**
 - **2 — из rust-DPI-http-proxy (host-space, title-case HTTP headers)**
 - (минус 6 Android-only: Doze, Radio, EnergyAware, Zero-Copy/splice...)
@@ -629,7 +629,7 @@ impl Runtime {
 |---|---------|-------------|----------|:---------:|
 | AD1 | **Probe/Tune/Run Three-Phase** | `adaptive::probe_tune_run` | 3 фазы: Probe (все стратегии) → Tune (лучшие) → Run (победитель) | 🔴 P1 |
 | AD2 | **Strategy Trait + Registry** | `adaptive::registry` | Trait-based стратегия: `trait Strategy { fn apply() }` + реестр по ID | 🔴 P0 |
-| AD3 | **Auto-tune Parameters** | `adaptive::tune` | Авто-подстройка frag_size, split_positions по результатам | 🔴 P1 |
+| AD3 | **Auto-tune Parameters** | `adaptive::auto_tune` | Подключён к pipeline (MR-37): `record()` + `recommend()` через `ConfigOverride` → перезапись `split_size`, `split_count`, `fake_ttl_offset`. Thompson sampling — будущий MR. | 🔴 P1 ✅ |
 | AD4 | **Strategy Persistence** | `adaptive::persist` | Сохранение лучших стратегий на диск (per-domain) | 🟡 P1 |
 
 #### 4.6.4 dpibreak (2 техники)
@@ -646,7 +646,7 @@ impl Runtime {
 | CT1 | **Mutual IP Spoofing** | `desync::ip::mutual_spoof` | Двусторонняя подмена source/dest IP между клиентом и сервером | 🟡 P5 |
 | CT2 | **ChaCha20 Per-Packet Obfuscation** | `desync::crypto::chacha20` | ChaCha20 шифрование каждого пакета (chacha20 crate, 0-allocation hot path) | 🔴 P3 |
 | CT3 | **TTL Jitter** | `desync::ip::ttl_jitter` | Случайный TTL (TTL ± random(3)) для каждого пакета | 🟡 P3 |
-| CT4 | **Random DSCP** | `desync::ip::dscp` | Случайная метка DSCP (Differentiated Services Code Point) | 🟡 P4 |
+| CT4 | **Per-Connection DSCP** | `conntrack` + `desync::ip::dscp` | DSCP постоянный per-connection (MR-G5): сохраняется в `ConntrackEntry.dscp_spoof`, передаётся через `ConfigOverride` в `DesyncGroup::apply()`. Случайный per-packet — аномалия для ML-DPI. | 🟡 P4 ✅ |
 | CT5 | **Packet Size Padding** | `desync::obfs::pad_size` | Дополнение пакета до ближайшего кратного размера (128/256/512/1024) | 🟡 P4 |
 | CT6 | **XOR FEC (Forward Error Correction)** | `desync::obfs::xorfec` | XOR-восстановление потерянных пакетов (k из n) | 🟡 P7 |
 | CT7 | **Multiplexing** | `proxy::mux` | Несколько логических потоков поверх одного TCP-соединения | 🟡 P7 |
@@ -678,12 +678,12 @@ impl Runtime {
 |---|---------|-------------|----------|:---------:|
 | DM1 | **XOR First N Bytes** | `desync::obfs::xor_first` | XOR-обфускация только первых N байт пакета (настраиваемое N) | 🟡 P4 |
 
-#### 4.6.9 OpenLogi (3 техники)
+#### 4.6.9 OpenLogi (3 техники, 1 удалена MR-18)
 
 | # | Техника | Rust модуль | Описание | Приоритет |
 |---|---------|-------------|----------|:---------:|
 | OL1 | **Thread-Local Hot Path** | `packet_engine::tls_hotpath` | thread_local! для WinDivert callback-статистики (keepalive, counters) без блокировок | 🔴 P0 |
-| OL2 | **Synthetic Event Tagging** | `infra::event_tag` | Глобальный UUID-тег (OnceLock) для injected пакетов. Impostor flag на WinDivertAddress. | 🔴 **P0** |
+| OL2 | **Synthetic Event Tagging** | ~~`infra::event_tag`~~ | **УДАЛЁН (MR-18).** WinDivert `set_impostor(true)` + IP ID tagging достаточны. UUID в TCP payload — fingerprint. | 🔴 **P0** ✅ |
 | OL3 | **interprocess + tarpc IPC** | `infra::ipc` | RPC-канал между service (NETWORK SERVICE) и UI (user) через interprocess crate | 🟡 P9 |
 
 #### 4.6.10 rust-no-dpi-socks (2 техники)
@@ -801,9 +801,9 @@ packets.par_iter().for_each(|pkt| {
 | DNS Cache | moka (concurrent LRU) | Очень низкий | |
 | Packet ring | crossbeam ArrayQueue (64K slots) | Нулевой | Lock-free MPMC ring с head-drop. Заменяет mpsc::channel. |
 | Stats counters | AtomicU64 | Нулевой | |
-| Packet buffers | thread-local pool (32 bufs/thread) | Нулевой | `desync::pool` — Mutex заменён на thread_local. |
+| Packet buffers | per-call `vec![0u8; total_len]` (1 alloc/call) | Нулевой | Thread-local pool был удалён (MR-10*: Bytes::from(vec) потребляет Vec). |
 | SplitTunnel cache | thread-local Vec<(u32, bool)> | Нулевой | `should_bypass_ip_fast()` — O(1) lookup. |
-| Inject tracking | InjectedSeqTracker (HashMap + TTL) | Низкий | Bounded (64K entries, 30s TTL). Заменяет unbounded DashSet. |
+| Inject tracking | Arc\<DashMap\<SeqKey, Instant\>\> | Низкий | DashMap вместо Mutex\<InjectedSeqTracker\> (MR-07). 5-tuple+SEQ ключ, TTL 30s. |
 | PerConnRng | Xorshift128** + periodic reseed | Нулевой | getrandom seed, reseed каждые 8192 вызова. |
 | HopTab | Direct-mapped hash (4096 entries) | Нулевой | O(1) lookup вместо O(256) linear scan. |
 | PRNG seed | getrandom (OS CSPRNG) | Нулевой | Вместо SystemTime::now(). |
@@ -825,7 +825,7 @@ packets.par_iter().for_each(|pkt| {
 | **UDP inject** (QUIC, DNS) | Raw socket (IPPROTO_RAW) | Raw socket работает для UDP |
 | IP Fragmentation (TCP) | WinDivert reinject с фрагментами | Raw socket заблокирован для TCP |
 | IP Fragmentation (UDP) | Raw socket (IP_HDRINCL) | Полный контроль IP header |
-| EventTag loop prevention | Только для TCP/WinDivert inject | UDP/raw не проходит через WinDivert filter |
+| Loop prevention | WinDivert impostor flag + IP ID tagging (MR-18: event_tag удалён) | TCP inject через WinDivert send() с impostor flag; UDP/raw не проходит через WinDivert filter |
 
 ### PacketEngine API
 
@@ -999,7 +999,8 @@ impl DnsEngine {
 | Bytes | `bytes` | 1.6 | Zero-copy packet buffers |
 | Config | `toml` | 0.8 | Config file format |
 | TinyVec | `tinyvec` | 1 | Small vector optimization |
-| UUID | `uuid` | 1.0 | EventTag global identifier |
+| UUID | `uuid` | 1.0 | Config file UUID generation (`config.rs:81`); event_tag удалён (MR-18) |
+| ArcSwap | `arc-swap` | 1 | Lock-free atomic swap для WinDivert handle (MR-P2) |
 
 ---
 
@@ -1297,21 +1298,21 @@ struct HopTab {
 |---|---------|:---------:|
 | DM1 | **XOR First N Bytes** | 🟡 P4 |
 
-### 13.9 OpenLogi — IPC + Event Tagging (3 техники)
+### 13.9 OpenLogi — IPC + Impostor Tagging (3 техники, 1 удалена)
 
 [Исходный код](research/rust_project/OpenLogi) — Rust. Event-driven архитектура с IPC.
 
 **Thread-Local Hot Path:** Использование `thread_local!` для хранения статистики keepalive и packet counters. Никаких блокировок на hot path.
 
-**Synthetic Event Tagging:** Каждый пакет, инжектированный byedpi, получает UUID-тег в payload (первые 16 байт). WinDivert фильтр исключает пакеты с этим тегом → никаких loop'ов.
+**Synthetic Event Tagging (УДАЛЁН MR-18):** UUID-тег в TCP payload заменён на WinDivert `set_impostor(true)` + IP ID tagging. UUID в payload — fingerprint.
 
 **interprocess + tarpc IPC:** RPC-канал для взаимодействия между Windows Service (работает как NETWORK SERVICE) и GUI (пользовательский процесс).
 
-| # | Техника | Приоритет |
-|---|---------|:---------:|
-| OL1 | **Thread-Local Hot Path** | 🔴 P0 |
-| OL2 | **Synthetic Event Tagging** | 🔴 **P0** |
-| OL3 | interprocess + tarpc IPC | 🟡 P9 |
+| # | Техника | Приоритет | Статус |
+|---|---------|:---------:|:------:|
+| OL1 | **Thread-Local Hot Path** | 🔴 P0 | ✅ |
+| OL2 | ~~Synthetic Event Tagging~~ | 🔴 **P0** | ❌ **УДАЛЁН (MR-18)** |
+| OL3 | interprocess + tarpc IPC | 🟡 P9 | ⏳ |
 
 ### 13.10 rust-no-dpi-socks — Byte-by-Byte (2 техники)
 
@@ -1353,7 +1354,7 @@ struct HopTab {
 | **DPIReaper** | **6** | 4 | **Sentinel, UWP** |
 | **qeli** | **3** | 2 | **Poisson shaping** |
 | **dpimyass** | **1** | 1 | XOR first N |
-| **OpenLogi** | **3** | 2 | **Event tagging, IPC** |
+| **OpenLogi** | **3** | 2 | **~Event tagging~ impostor flag, IPC** |
 | **rust-no-dpi-socks** | **2** | 1 | **Byte-by-byte** |
 | **rust-DPI-http-proxy** | **2** | 1 | **Host-space** |
 | **SpoofDPI** | **6** | 6 | **Segment Plans + Noise, Random Mask, Parallel Dial, Dual-Stack Hop, Domain Trie, Per-Rule Override** |
@@ -2038,7 +2039,7 @@ impl AppRouter {
 |---|---------|-------------|----------|:---------:|
 | AD1 | **Probe/Tune/Run** | `adaptive::probe_tune_run` | Трёхфазный выбор стратегии | 🔴 P1 |
 | AD2 | **Strategy Trait + Registry** | `adaptive::registry` | Trait-based архитектура стратегий | 🔴 P0 |
-| AD3 | **Auto-tune Parameters** | `adaptive::tune` | Авто-подстройка параметров | 🔴 P1 |
+| AD3 | **Auto-tune Parameters** | `adaptive::auto_tune` | Подключён к pipeline (MR-37): record() + recommend() → ConfigOverride | 🔴 P1 ✅ |
 | AD4 | **Strategy Persistence** | `adaptive::persist` | Сохранение best-стратегий на диск | 🟡 P1 |
 
 ### 18.10 Техники из dpibreak (2 шт)
@@ -2055,7 +2056,7 @@ impl AppRouter {
 | CT1 | **Mutual IP Spoofing** | `desync::ip::mutual_spoof` | Двусторонняя подмена IP | 🟡 P5 |
 | CT2 | **ChaCha20 Per-Packet** | `desync::crypto::chacha20` | Per-packet шифрование (chacha20 crate) | 🔴 P3 |
 | CT3 | **TTL Jitter** | `desync::ip::ttl_jitter` | TTL ± random(3) | 🟡 P3 |
-| CT4 | **Random DSCP** | `desync::ip::dscp` | Случайные DSCP-метки | 🟡 P4 |
+| CT4 | **Per-Connection DSCP** | `conntrack::dscp_spoof` | Per-connection constant (MR-G5), хранится в ConntrackEntry, передаётся в DesyncGroup | 🟡 P4 ✅ |
 | CT5 | **Packet Size Padding** | `desync::obfs::pad_size` | Padding до кратного размера | 🟡 P4 |
 | CT6 | **XOR FEC** | `desync::obfs::xorfec` | Forward Error Correction | 🟡 P7 |
 | CT7 | **Multiplexing** | `proxy::mux` | Несколько потоков поверх 1 TCP | 🟡 P7 |
@@ -2087,12 +2088,12 @@ impl AppRouter {
 |---|---------|-------------|----------|:---------:|
 | DM1 | **XOR First N Bytes** | `desync::obfs::xor_first` | XOR только первых N байт | 🟡 P4 |
 
-### 18.15 Техники из OpenLogi (3 шт)
+### 18.15 Техники из OpenLogi (3 шт, 1 удалена MR-18)
 
 | # | Техника | Rust модуль | Описание | Приоритет |
 |---|---------|-------------|----------|:---------:|
 | OL1 | **Thread-Local Hot Path** | `packet_engine::tls_hotpath` | thread_local! статистика, 0 lock'ов | 🔴 P0 |
-| OL2 | **Synthetic Event Tagging** | `packet_engine::event_tag` | UUID-тег injected пакетов | 🔴 P0 |
+| OL2 | **Synthetic Event Tagging** | ~~`infra::event_tag`~~ | **УДАЛЁН (MR-18).** Impostor flag + IP ID tagging достаточны. UUID в payload — fingerprint. | 🔴 P0 ✅ |
 | OL3 | **interprocess + tarpc IPC** | `infra::ipc` | RPC service↔UI | 🟡 P9 |
 
 ### 18.16 Техники из rust-no-dpi-socks (2 шт)
@@ -3428,11 +3429,11 @@ impl Drop for NetworkMonitor {
 
 **Решение:** `gc_fast()` с `iter().step_by(128)` — проверяет каждый 128-й entry.
 
-### 22.3 FIX-3: TcpSegmentWriter Pre-allocated
+### 22.3 FIX-3: TcpSegmentWriter — удалён (dead code)
 
-**Проблема:** `build_tcp_segment()` создаёт Vec на каждый inject пакет.
+**Было:** `TcpSegmentWriter` (struct + impl, 0 вызовов) — неиспользуемый код.
 
-**Решение:** `TcpSegmentWriter` с pre-allocated template [u8; 40] (IP+TCP headers).
+**Решение:** Удалён полностью (MR-10*). `build_ip_tcp_packet` использует `vec![0u8; total_len]`.
 
 ### 22.4 FIX-4: OOO/dup-ACK Detection
 
@@ -3440,11 +3441,13 @@ impl Drop for NetworkMonitor {
 
 **Решение:** `update_seq_monotonic(key, seq, ack)` — проверка delta < 1M, dup_ack_count++.
 
-### 22.5 FIX-5: Fake CH Race Prevention
+### 22.5 FIX-5: Fake CH Race Prevention (replaced by MR-07)
 
 **Проблема:** Async desync + retransmit → fake CH после оригинала.
 
-**Решение:** `injected_seqs: DashSet<u32>` — skip retransmits injected пакетов.
+**Было:** `injected_seqs: DashSet<u32>` — unbounded, коллизии SEQ между разными соединениями.
+
+**Стало (MR-07+E4):** `Arc<DashMap<(u128, u128, u16, u16, u32), Instant>>` — 5-tuple+SEQ ключ, TTL 30s.
 
 ### 22.6 FIX-6: MTU Guard
 
@@ -3489,9 +3492,12 @@ impl Drop for NetworkMonitor {
 | Packet ring | `tokio::mpsc::channel(1024)` | `crossbeam::ArrayQueue(65536)` lock-free head-drop |
 | Packet type | `Vec<u8>` | `bytes::Bytes` (zero-copy refcount) |
 | PRNG seed | `SystemTime::now()` | `getrandom` (OS CSPRNG) + periodic reseed |
-| EventTag | `thread_local!` UUID | `OnceLock` глобальный UUID |
-| Buffer pool | `Mutex<Vec<Vec<u8>>>` | `thread_local!` pool без блокировок |
-| Inject tracking | `DashSet<u32>` (unbounded) | `InjectedSeqTracker` (HashMap + TTL, 64K max) |
+| EventTag | `thread_local!` UUID + payload tag | **УДАЛЁН (MR-18)** — WinDivert impostor flag + IP ID tagging |
+| Buffer pool | `Mutex<Vec<Vec<u8>>>` | УДАЛЁН (MR-10*): Bytes::from(vec) потребляет Vec, thread-local бесполезен |
+| Inject tracking | `DashSet<u32>` (unbounded) → `InjectedSeqTracker` (HashMap+TTL) | `Arc\<DashMap\<SeqKey, Instant\>\>` (MR-07) 5-tuple+SEQ ключ |
+| PacketEngine divert | `RwLock<Option<WinDivert>>` | `ArcSwap<Option<WinDivert>>` (MR-P2) — lock-free read hot path |
+| DSCP | per-packet random | Per-connection constant (MR-G5) — `ConntrackEntry.dscp_spoof` |
+| AutoTune | dead code (не подключён) | Подключён к pipeline (MR-37): record() + recommend() → ConfigOverride |
 | HopTab lookup | O(256) linear scan | O(1) direct-mapped hash (4096 entries) |
 | Conntrack upsert | 2 DashMap lookups | Entry API — 1 shard lock |
 | GC | `iter().remove()` (deadlock) | Two-phase: collect keys → remove |

@@ -46,6 +46,8 @@ pub struct ConntrackEntry {
     pub rtt_us: u64,
     pub state: ConnState,
     pub desync_applied: bool,
+    /// DSCP per-connection: фиксированное значение для всех пакетов соединения
+    pub dscp_spoof: u8,
     pub strategy_id: u32,
     pub last_activity: Instant,
     pub dup_ack_count: u32,
@@ -155,25 +157,32 @@ impl Conntrack {
         }
     }
 
-    /// Быстрый GC — two-phase: collect then remove (без deadlock).
-    pub fn gc_fast(&self, max_idle: Duration) {
-        let now = Instant::now();
+    /// Incremental GC — обрабатывает записи с time budget ≤1ms.
+    /// Использует безопасный API DashMap (iter + remove).
+    pub fn gc_incremental(&self, max_idle: Duration) {
+        let deadline = Instant::now() + Duration::from_millis(1);
+        let mut evicted = 0u64;
+
+        // Собираем ключи для удаления, Respect time budget
         let to_remove: Vec<ConnKey> = self
             .inner
             .map
             .iter()
-            .filter(|r| now.duration_since(r.value().last_activity) > max_idle)
+            .take_while(|_| Instant::now() <= deadline)
+            .filter(|r| r.value().last_activity.elapsed() > max_idle)
             .map(|r| *r.key())
             .collect();
-        let removed = to_remove.len() as u64;
+
         for key in to_remove {
             self.inner.map.remove(&key);
+            evicted += 1;
         }
-        if removed > 0 {
+
+        if evicted > 0 {
             self.inner
                 .active_count
-                .fetch_sub(removed, Ordering::Relaxed);
-            debug!("Conntrack GC fast: removed {} stale entries", removed);
+                .fetch_sub(evicted, Ordering::Relaxed);
+            debug!("Conntrack GC incremental: evicted {} entries", evicted);
         }
     }
 
@@ -181,7 +190,7 @@ impl Conntrack {
         let mut interval = tokio::time::interval(self.inner.gc_interval);
         loop {
             interval.tick().await;
-            self.gc(Duration::from_secs(120));
+            self.gc_incremental(Duration::from_secs(120));
         }
     }
 
@@ -234,6 +243,7 @@ mod tests {
             rtt_us: 50000,
             state: ConnState::Established,
             desync_applied: true,
+            dscp_spoof: 0,
             strategy_id: 42,
             last_activity: Instant::now(),
             dup_ack_count: 0,
