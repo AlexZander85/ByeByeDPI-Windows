@@ -252,7 +252,7 @@ impl ProcessingPipeline {
                             self.forward_packet(&captured).await;
                         }
                         Ok(PacketDecision::Modify(modified)) => {
-                            self.send_packet(&modified, &captured.addr).await;
+                            self.send_packet(modified, &captured.addr).await;
                             self.stats.forwarded.fetch_add(1, Ordering::Relaxed);
                         }
                         Ok(PacketDecision::Desync {
@@ -262,7 +262,7 @@ impl ProcessingPipeline {
                             for inject_pkt in &inject {
                                 match inject_protocol {
                                     InjectProtocol::Tcp => {
-                                        self.inject_tcp_packet(inject_pkt, &captured.addr)
+                                        self.inject_tcp_packet(inject_pkt.clone(), &captured.addr)
                                             .await;
                                     }
                                     InjectProtocol::Udp => {
@@ -301,14 +301,14 @@ impl ProcessingPipeline {
     }
 
     async fn forward_packet(&self, captured: &CapturedPacket) {
-        self.send_packet(&captured.data, &captured.addr).await;
+        self.send_packet(captured.data.clone(), &captured.addr)
+            .await;
     }
 
-    async fn send_packet(&self, packet: &[u8], addr: &WinDivertAddress<NetworkLayer>) {
+    async fn send_packet(&self, packet: bytes::Bytes, addr: &WinDivertAddress<NetworkLayer>) {
         let engine = self.packet_engine.clone();
-        let data = bytes::Bytes::copy_from_slice(packet);
         let addr = addr.clone();
-        match tokio::task::spawn_blocking(move || engine.send_blocking(&data, &addr)).await {
+        match tokio::task::spawn_blocking(move || engine.send_blocking(&packet, &addr)).await {
             Ok(Ok(_)) => {
                 self.stats.forwarded.fetch_add(1, Ordering::Relaxed);
             }
@@ -546,11 +546,10 @@ impl ProcessingPipeline {
         })
     }
 
-    async fn inject_tcp_packet(&self, packet: &[u8], addr: &WinDivertAddress<NetworkLayer>) {
+    async fn inject_tcp_packet(&self, packet: bytes::Bytes, addr: &WinDivertAddress<NetworkLayer>) {
         let engine = self.packet_engine.clone();
-        let data = bytes::Bytes::copy_from_slice(packet);
         let addr = addr.clone();
-        match tokio::task::spawn_blocking(move || engine.inject_via_divert(&data, &addr)).await {
+        match tokio::task::spawn_blocking(move || engine.inject_via_divert(&packet, &addr)).await {
             Ok(Ok(_)) => {
                 self.stats.fake_ch_injected.fetch_add(1, Ordering::Relaxed);
             }
