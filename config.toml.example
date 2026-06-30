@@ -23,3 +23,17 @@ fake_sni = "www.google.com"
 split_size = 1
 split_count = 3
 fake_ttl_offset = 1
+
+[probe]
+enabled = true
+auto_probe_domains = ["youtube.com", "telegram.org", "rutracker.org"]
+auto_probe_interval = 300  # seconds
+dns_udp_servers = ["8.8.8.8", "1.1.1.1", "9.9.9.9"]
+dns_doh_urls = ["https://cloudflare-dns.com/dns-query"]
+tcp_connect_timeout_ms = 3000
+tls_connect_timeout_ms = 5000
+http_read_timeout_ms = 8000
+tcp16_enabled = false
+accumulation_enabled = true
+promote_threshold = 50
+hot_ttl_seconds = 86400

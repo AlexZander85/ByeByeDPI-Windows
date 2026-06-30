@@ -853,7 +853,8 @@ pub(crate) fn build_udp_packet(
     let udp_len = 8 + payload.len();
     let total_len = 20 + udp_len;
 
-    let mut buf = vec![0u8; total_len];
+    let mut buf = bytes::BytesMut::with_capacity(total_len);
+    buf.resize(total_len, 0);
 
     // IP Header
     {
@@ -890,7 +891,7 @@ pub(crate) fn build_udp_packet(
     let udp_csum = crate::desync::tcp_checksum_v4(src_ip, dst_ip, &buf[20..20 + udp_len]);
     buf[26..28].copy_from_slice(&udp_csum.to_be_bytes());
 
-    bytes::Bytes::from(buf)
+    buf.freeze()
 }
 
 #[cfg(test)]

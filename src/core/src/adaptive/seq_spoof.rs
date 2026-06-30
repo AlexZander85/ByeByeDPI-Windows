@@ -47,7 +47,7 @@ const SPOOF_OFFSET: u32 = 10_000;
 #[derive(Debug)]
 pub struct SeqSpoofResult {
     /// Fake ClientHello (полный IP + TCP пакет для инъекции)
-    pub fake_packet: Vec<u8>,
+    pub fake_packet: bytes::Bytes,
     /// Рекомендованный TTL для fake пакета
     pub fake_ttl: u8,
 }
@@ -154,12 +154,13 @@ fn build_fake_tcp_packet(
     ack_num: u32,
     payload: &[u8],
     ttl: u8,
-) -> Result<Vec<u8>> {
+) -> Result<bytes::Bytes> {
     const IP_HLEN: usize = 20;
     const TCP_HLEN: usize = 20;
     let total_len = IP_HLEN + TCP_HLEN + payload.len();
 
-    let mut buf = vec![0u8; total_len];
+    let mut buf = bytes::BytesMut::with_capacity(total_len);
+    buf.resize(total_len, 0);
 
     // --- IP Header (use pnet_packet to set fields, compute checksum after scope) ---
     {
@@ -202,7 +203,7 @@ fn build_fake_tcp_packet(
     buf[IP_HLEN + 16] = cksum_bytes[0];
     buf[IP_HLEN + 17] = cksum_bytes[1];
 
-    Ok(buf)
+    Ok(buf.freeze())
 }
 
 /// Вычисляет IP header checksum.
@@ -269,7 +270,7 @@ pub fn build_seq_spoof_packet_badsum(
 ) -> Result<SeqSpoofResult> {
     let fake_ch = ch_gen::build_client_hello_default(fake_sni);
 
-    let mut packet = build_fake_tcp_packet(
+    let packet = build_fake_tcp_packet(
         src_ip,
         dst_ip,
         src_port,
@@ -282,12 +283,16 @@ pub fn build_seq_spoof_packet_badsum(
 
     // Инвертируем checksum (делаем заведомо неправильной)
     let tcp_start = 20; // IP header = 20 bytes
-    if packet.len() > tcp_start + 18 {
-        let cksum = &packet[tcp_start + 16..tcp_start + 18];
+    let packet = if packet.len() > tcp_start + 18 {
+        let mut m = bytes::BytesMut::from(&packet[..]);
+        let cksum = m[tcp_start + 16..tcp_start + 18].to_vec();
         let bad = (!u16::from_be_bytes([cksum[0], cksum[1]])).to_be_bytes();
-        packet[tcp_start + 16] = bad[0];
-        packet[tcp_start + 17] = bad[1];
-    }
+        m[tcp_start + 16] = bad[0];
+        m[tcp_start + 17] = bad[1];
+        m.freeze()
+    } else {
+        packet
+    };
 
     debug!(
         "SEQ Spoof (badsum): {}:{} → {}:{}",
@@ -310,12 +315,13 @@ pub fn build_fake_rst_packet(
     dst_port: u16,
     seq_num: u32,
     ack_num: u32,
-) -> Result<Vec<u8>> {
+) -> Result<bytes::Bytes> {
     const IP_HLEN: usize = 20;
     const TCP_HLEN: usize = 20;
     let total_len = IP_HLEN + TCP_HLEN;
 
-    let mut buf = vec![0u8; total_len];
+    let mut buf = bytes::BytesMut::with_capacity(total_len);
+    buf.resize(total_len, 0);
 
     // --- IP Header ---
     {
@@ -354,7 +360,7 @@ pub fn build_fake_rst_packet(
     buf[IP_HLEN + 16] = cksum_bytes[0];
     buf[IP_HLEN + 17] = cksum_bytes[1];
 
-    Ok(buf)
+    Ok(buf.freeze())
 }
 
 #[cfg(test)]

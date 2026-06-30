@@ -559,7 +559,8 @@ fn build_ip_tcp_packet(
     let tcp_header_len = 20;
     let total_len = 20 + tcp_header_len + payload.len();
 
-    let mut buf = vec![0u8; total_len];
+    let mut buf = bytes::BytesMut::with_capacity(total_len);
+    buf.resize(total_len, 0);
 
     // IP header (bytes 0..20)
     buf[0] = 0x45;
@@ -588,7 +589,7 @@ fn build_ip_tcp_packet(
     let tcp_csum = crate::desync::tcp_checksum_v4(src_ip, dst_ip, &buf[20..]);
     buf[36..38].copy_from_slice(&tcp_csum.to_be_bytes());
 
-    bytes::Bytes::from(buf)
+    buf.freeze()
 }
 
 /// Строит полный IP+TCP пакет.

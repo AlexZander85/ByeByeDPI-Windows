@@ -327,7 +327,8 @@ fn build_tcp_with_payload(
     let tcp_header_len = 20;
 
     // --- TCP segment ---
-    let mut tcp_buf = vec![0u8; tcp_header_len];
+    let mut tcp_buf = bytes::BytesMut::with_capacity(tcp_header_len);
+    tcp_buf.resize(tcp_header_len, 0);
     {
         let mut tcp = MutableTcpPacket::new(&mut tcp_buf).unwrap();
         tcp.set_source(src_port);
@@ -349,7 +350,8 @@ fn build_tcp_with_payload(
 
     // --- IP packet ---
     let total_len = 20 + full.len();
-    let mut ip_buf = vec![0u8; total_len];
+    let mut ip_buf = bytes::BytesMut::with_capacity(total_len);
+    ip_buf.resize(total_len, 0);
     {
         let mut ip = MutableIpv4Packet::new(&mut ip_buf).unwrap();
         ip.set_version(4);
@@ -368,7 +370,7 @@ fn build_tcp_with_payload(
     let ip_csum = ipv4_checksum(&ip_buf[..20]);
     ip_buf[10..12].copy_from_slice(&ip_csum.to_be_bytes());
 
-    bytes::Bytes::from(ip_buf)
+    ip_buf.freeze()
 }
 
 /// [OF1] SniMasking: маскировка SNI в существующем TLS ClientHello.

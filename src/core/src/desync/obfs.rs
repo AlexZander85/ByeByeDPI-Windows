@@ -438,11 +438,12 @@ fn build_udp_like_segment(
     payload: &[u8],
     ttl: u8,
     identification: u16,
-) -> Vec<u8> {
+) -> bytes::Bytes {
     let udp_len = 8 + payload.len();
     let total_len = 20 + udp_len;
 
-    let mut buf = vec![0u8; total_len];
+    let mut buf = bytes::BytesMut::with_capacity(total_len);
+    buf.resize(total_len, 0);
 
     // IP Header
     {
@@ -475,7 +476,7 @@ fn build_udp_like_segment(
     // Payload
     buf[28..28 + payload.len()].copy_from_slice(payload);
 
-    buf
+    buf.freeze()
 }
 
 /// Строит ICMP пакет.
@@ -486,10 +487,11 @@ fn build_icmp_packet(
     icmp_payload: &[u8],
     ttl: u8,
     identification: u16,
-) -> Vec<u8> {
+) -> bytes::Bytes {
     let total_len = 20 + icmp_payload.len();
 
-    let mut buf = vec![0u8; total_len];
+    let mut buf = bytes::BytesMut::with_capacity(total_len);
+    buf.resize(total_len, 0);
 
     // IP Header
     {
@@ -512,7 +514,7 @@ fn build_icmp_packet(
     // ICMP payload
     buf[20..20 + icmp_payload.len()].copy_from_slice(icmp_payload);
 
-    buf
+    buf.freeze()
 }
 
 /// Вычисляет ICMP checksum.

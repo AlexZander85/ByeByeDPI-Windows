@@ -293,7 +293,8 @@ fn build_ip_fragment(
     payload: &[u8],
 ) -> bytes::Bytes {
     let total_len = 20 + payload.len();
-    let mut buf = vec![0u8; total_len];
+    let mut buf = bytes::BytesMut::with_capacity(total_len);
+    buf.resize(total_len, 0);
 
     {
         let mut ip = MutableIpv4Packet::new(&mut buf).unwrap();
@@ -318,7 +319,7 @@ fn build_ip_fragment(
 
     let checksum = ipv4_checksum(&buf[..20]);
     buf[10..12].copy_from_slice(&checksum.to_be_bytes());
-    bytes::Bytes::from(buf)
+    buf.freeze()
 }
 
 // ==================== P6: CandyTunnel IP техники ====================
