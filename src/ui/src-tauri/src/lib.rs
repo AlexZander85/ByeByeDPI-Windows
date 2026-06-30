@@ -11,6 +11,14 @@ pub fn run() {
             commands::get_conntrack,
             commands::get_config,
             commands::save_config,
+            commands::run_probe,
+            commands::get_probe_presets,
+            commands::get_probe_history,
+            commands::run_batch_probe,
+            commands::get_custom_lists,
+            commands::save_custom_list,
+            commands::delete_custom_list,
+            commands::import_domains_from_text,
         ])
         .setup(|app| {
             tray::setup_tray(app.handle())?;

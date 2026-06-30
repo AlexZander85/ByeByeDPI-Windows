@@ -54,6 +54,10 @@ pub trait EngineHandle {
     fn test_strategy(&self, params: &StrategyTestParams) -> Result<StrategyTestResult, String>;
     fn tune_strategy(&self, params: &TuneParams);
     fn set_routing_override(&self, params: &RoutingOverride);
+    fn probe_domain(&self, domain: &str, full: bool) -> Result<serde_json::Value, String>;
+    fn probe_batch(&self, domains: &[&str], full: bool) -> Result<serde_json::Value, String>;
+    fn get_presets(&self) -> serde_json::Value;
+    fn get_probe_history(&self) -> serde_json::Value;
 }
 
 // ─── Request/Response типы ─────────────────────────────────────────────────
@@ -102,6 +106,24 @@ fn default_ttl() -> u64 {
     60
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ProbeRequest {
+    pub domain: String,
+    #[serde(default = "default_false")]
+    pub full: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BatchProbeRequest {
+    pub preset_ids: Vec<String>,
+    #[serde(default = "default_false")]
+    pub full: bool,
+}
+
+fn default_false() -> bool {
+    false
+}
+
 // ─── API Server ────────────────────────────────────────────────────────────
 
 /// Запускает HTTP API сервер.
@@ -119,6 +141,10 @@ pub async fn serve(engine: Arc<dyn EngineHandle + Send + Sync>, api_key: String,
         .route("/api/v1/dns/cache", get(dns_cache_handler))
         .route("/api/v1/routing/override", post(routing_override_handler))
         .route("/api/v1/health", get(health_handler))
+        .route("/api/v1/probe", post(probe_handler))
+        .route("/api/v1/probe/batch", post(batch_probe_handler))
+        .route("/api/v1/probe/presets", get(presets_handler))
+        .route("/api/v1/probe/history", get(history_handler))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -233,6 +259,45 @@ async fn health_handler(State(state): State<Arc<ApiState>>) -> impl IntoResponse
     }))
 }
 
+/// `POST /api/v1/probe/batch` — batch probe для нескольких доменов.
+async fn batch_probe_handler(
+    State(state): State<Arc<ApiState>>,
+    Json(params): Json<BatchProbeRequest>,
+) -> impl IntoResponse {
+    let preset_refs: Vec<&str> = params.preset_ids.iter().map(|s| s.as_str()).collect();
+    match state.engine.probe_batch(&preset_refs, params.full) {
+        Ok(result) => (StatusCode::OK, Json(result)),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        ),
+    }
+}
+
+/// `POST /api/v1/probe` — запуск DPI probe для домена.
+async fn probe_handler(
+    State(state): State<Arc<ApiState>>,
+    Json(params): Json<ProbeRequest>,
+) -> impl IntoResponse {
+    match state.engine.probe_domain(&params.domain, params.full) {
+        Ok(result) => (StatusCode::OK, Json(result)),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        ),
+    }
+}
+
+/// `GET /api/v1/probe/presets` — список preset доменов.
+async fn presets_handler(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    Json(state.engine.get_presets())
+}
+
+/// `GET /api/v1/probe/history` — история probe'ов.
+async fn history_handler(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    Json(state.engine.get_probe_history())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,6 +346,28 @@ mod tests {
         }
         fn tune_strategy(&self, _params: &TuneParams) {}
         fn set_routing_override(&self, _params: &RoutingOverride) {}
+        fn probe_domain(&self, domain: &str, _full: bool) -> Result<serde_json::Value, String> {
+            Ok(serde_json::json!({
+                "domain": domain,
+                "verdict": "ambiguous",
+                "confidence": 0.5,
+                "dns": { "phase": "dns", "status": "ok", "detail": "Ok" },
+                "tcp": { "phase": "tcp", "status": "ok", "detail": "ConnectOk" },
+                "tls": null,
+                "http": null,
+                "recommendations": [],
+                "timestamp": "",
+            }))
+        }
+        fn probe_batch(&self, _domains: &[&str], _full: bool) -> Result<serde_json::Value, String> {
+            Ok(serde_json::json!([]))
+        }
+        fn get_presets(&self) -> serde_json::Value {
+            serde_json::json!([])
+        }
+        fn get_probe_history(&self) -> serde_json::Value {
+            serde_json::json!([])
+        }
     }
 
     #[tokio::test]

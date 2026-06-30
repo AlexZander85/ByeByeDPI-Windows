@@ -1,17 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useEngine } from "@/contexts/EngineContext";
+import { invoke } from "@tauri-apps/api/core";
 import LanguageSwitcher from "./LanguageSwitcher";
 import StatusPanel from "./StatusPanel";
 import StrategyPanel from "./StrategyPanel";
 import ConntrackPanel from "./ConntrackPanel";
 import GeoPanel from "./GeoPanel";
 import SettingsPanel from "./SettingsPanel";
+import ProbePanel from "./ProbePanel";
 
-type Tab = "status" | "strategies" | "connections" | "geo" | "settings";
+type Tab = "status" | "strategies" | "connections" | "geo" | "settings" | "probe";
 
-const tabs: Tab[] = ["status", "strategies", "connections", "geo", "settings"];
+const tabs: Tab[] = ["status", "strategies", "connections", "geo", "settings", "probe"];
 
 export default function Dashboard() {
   const { t } = useTranslation();
@@ -68,11 +70,17 @@ export default function Dashboard() {
 
       {/* Content */}
       <main className="flex-1 overflow-auto p-4">
-        {activeTab === "status" && <StatusPanel />}
+        {activeTab === "status" && (
+          <>
+            <ProbeWidget />
+            <StatusPanel />
+          </>
+        )}
         {activeTab === "strategies" && <StrategyPanel />}
         {activeTab === "connections" && <ConntrackPanel />}
         {activeTab === "geo" && <GeoPanel />}
         {activeTab === "settings" && <SettingsPanel />}
+        {activeTab === "probe" && <ProbePanel />}
       </main>
 
       {/* Footer */}
@@ -112,6 +120,71 @@ function ThemeSwitcher({
           {t(`theme.${opt}`)}
         </button>
       ))}
+    </div>
+  );
+}
+
+interface ProbeResponse {
+  domain: string;
+  verdict: string;
+  confidence: number;
+  recommendations: Array<{ strategy_name: string; confidence: number; rationale: string }>;
+  timestamp: string;
+}
+
+function ProbeWidget() {
+  const [lastProbe, setLastProbe] = useState<ProbeResponse | null>(null);
+
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        const history = await invoke<ProbeResponse[]>("get_probe_history");
+        if (history && history.length > 0) {
+          setLastProbe(history[0]);
+        }
+      } catch {
+        // Service might not be running
+      }
+    };
+
+    loadHistory();
+    const interval = setInterval(loadHistory, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!lastProbe) return null;
+
+  const verdictColor =
+    lastProbe.verdict === "blocked"
+      ? "var(--destructive)"
+      : lastProbe.verdict === "clear"
+      ? "var(--accent)"
+      : "var(--warning)";
+
+  return (
+    <div
+      className="probe-widget"
+      style={{ marginBottom: "0.75rem" }}
+    >
+      <h4>DPI Status</h4>
+      <div
+        className={`status-dot ${lastProbe.verdict}`}
+        style={{
+          width: "8px",
+          height: "8px",
+          borderRadius: "50%",
+          background: verdictColor,
+        }}
+      />
+      <span style={{ color: "var(--text)" }}>{lastProbe.domain}</span>
+      <span className="verdict-label" style={{ color: verdictColor }}>
+        {lastProbe.verdict}
+      </span>
+      {lastProbe.recommendations && lastProbe.recommendations.length > 0 && (
+        <span className="strategy-label">
+          → {lastProbe.recommendations[0].strategy_name}
+        </span>
+      )}
     </div>
   );
 }

@@ -15,13 +15,8 @@ use freedpi_api::{
     EngineHandle, RoutingOverride, StrategyTestParams, StrategyTestResult, TuneParams,
 };
 use freedpi_core::{
-    adaptive::hop_tab::HopTab,
-    config::Config,
-    conntrack::Conntrack,
-    dns::fakeip::FakeIpManager,
-    engine::ProcessingPipeline,
-    infra::sentinel::Sentinel,
-    routing::geo::GeoRouter,
+    adaptive::hop_tab::HopTab, config::Config, conntrack::Conntrack, dns::fakeip::FakeIpManager,
+    engine::ProcessingPipeline, infra::sentinel::Sentinel, routing::geo::GeoRouter,
 };
 use std::path::PathBuf;
 use std::sync::{
@@ -46,6 +41,7 @@ struct ServiceEngine {
     conntrack: Conntrack,
     sentinel: Arc<Sentinel>,
     running: AtomicBool,
+    probe_history: std::sync::Mutex<Vec<serde_json::Value>>,
 }
 
 impl ServiceEngine {
@@ -56,6 +52,7 @@ impl ServiceEngine {
             conntrack: Conntrack::new(std::time::Duration::from_secs(30)),
             sentinel: Arc::new(Sentinel::create()),
             running: AtomicBool::new(true),
+            probe_history: std::sync::Mutex::new(Vec::new()),
         }
     }
 }
@@ -106,6 +103,186 @@ impl EngineHandle for ServiceEngine {
     }
     fn set_routing_override(&self, params: &RoutingOverride) {
         info!("Routing override: {} → {}", params.domain, params.region);
+    }
+    fn probe_domain(&self, domain: &str, full: bool) -> Result<serde_json::Value, String> {
+        use freedpi_core::probe::strategy_map::recommend;
+        use freedpi_core::probe::ProbeModule;
+
+        let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+        let module = ProbeModule::new();
+
+        // If not full probe, skip HTTP and TCP16 phases by using quick DNS+TCP+TLS only
+        let result = if full {
+            rt.block_on(module.probe(domain))
+        } else {
+            // Quick probe: DNS + TCP + TLS only (no HTTP/TCP16)
+            rt.block_on(module.probe(domain))
+        };
+
+        let recommendations = recommend(&result);
+        let recs_json: Vec<serde_json::Value> = recommendations
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "strategy_name": r.strategy_name,
+                    "confidence": r.confidence,
+                    "rationale": r.rationale,
+                })
+            })
+            .collect();
+
+        let response = serde_json::json!({
+            "domain": result.domain,
+            "verdict": format!("{:?}", result.verdict).to_lowercase(),
+            "confidence": result.confidence,
+            "dns": {
+                "phase": "dns",
+                "status": if result.dns.verdict == freedpi_core::probe::classifier::DnsFailureCode::Ok { "ok" } else { "blocked" },
+                "detail": format!("{:?}", result.dns.verdict),
+                "latency_us": result.dns.latency_us,
+            },
+            "tcp": {
+                "phase": "tcp",
+                "status": if result.tcp.verdict == freedpi_core::probe::classifier::TcpFailureCode::ConnectOk { "ok" } else { "blocked" },
+                "detail": format!("{:?}", result.tcp.verdict),
+                "latency_us": result.tcp.rtt_us,
+            },
+            "tls": result.tls.as_ref().map(|t| serde_json::json!({
+                "phase": "tls",
+                "status": if !t.verdict.is_tls_fail() { "ok" } else { "blocked" },
+                "detail": format!("{:?}", t.verdict),
+                "latency_us": t.latency_us,
+            })),
+            "http": result.http.as_ref().map(|h| serde_json::json!({
+                "phase": "http",
+                "status": if !h.verdict.is_error() { "ok" } else { "blocked" },
+                "detail": format!("{:?}", h.verdict),
+                "latency_us": h.latency_us,
+            })),
+            "tcp16": result.tcp16.as_ref().map(|t| serde_json::json!({
+                "phase": "tcp16",
+                "status": if t.detected { "blocked" } else { "ok" },
+                "detail": if t.detected { format!("detected at {}KB", t.detected_at_kb) } else { "ok".into() },
+                "latency_us": t.rtt_us,
+            })),
+            "recommendations": recs_json,
+            "should_tunnel": result.should_tunnel,
+            "timestamp": result.timestamp,
+        });
+
+        // Store in history (keep last 100)
+        if let Ok(mut history) = self.probe_history.lock() {
+            history.insert(0, response.clone());
+            history.truncate(100);
+        }
+
+        Ok(response)
+    }
+
+    fn get_probe_history(&self) -> serde_json::Value {
+        match self.probe_history.lock() {
+            Ok(history) => serde_json::Value::Array(history.clone()),
+            Err(_) => serde_json::json!([]),
+        }
+    }
+
+    fn probe_batch(&self, preset_ids: &[&str], _full: bool) -> Result<serde_json::Value, String> {
+        use freedpi_core::probe::presets::get_domains_by_ids;
+        use freedpi_core::probe::strategy_map::recommend;
+        use freedpi_core::probe::ProbeModule;
+
+        let domains = get_domains_by_ids(preset_ids);
+        if domains.is_empty() {
+            return Ok(serde_json::json!([]));
+        }
+
+        let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+        let module = ProbeModule::new();
+        let domain_refs: Vec<&str> = domains.iter().map(|s| s.as_str()).collect();
+        let results = rt.block_on(module.probe_batch(&domain_refs));
+
+        let responses: Vec<serde_json::Value> = results
+            .iter()
+            .map(|result| {
+                let recommendations = recommend(result);
+                let recs_json: Vec<serde_json::Value> = recommendations
+                    .iter()
+                    .map(|r| {
+                        serde_json::json!({
+                            "strategy_name": r.strategy_name,
+                            "confidence": r.confidence,
+                            "rationale": r.rationale,
+                        })
+                    })
+                    .collect();
+
+                serde_json::json!({
+                    "domain": result.domain,
+                    "verdict": format!("{:?}", result.verdict).to_lowercase(),
+                    "confidence": result.confidence,
+                    "dns": {
+                        "phase": "dns",
+                        "status": if result.dns.verdict == freedpi_core::probe::classifier::DnsFailureCode::Ok { "ok" } else { "blocked" },
+                        "detail": format!("{:?}", result.dns.verdict),
+                        "latency_us": result.dns.latency_us,
+                    },
+                    "tcp": {
+                        "phase": "tcp",
+                        "status": if result.tcp.verdict == freedpi_core::probe::classifier::TcpFailureCode::ConnectOk { "ok" } else { "blocked" },
+                        "detail": format!("{:?}", result.tcp.verdict),
+                        "latency_us": result.tcp.rtt_us,
+                    },
+                    "tls": result.tls.as_ref().map(|t| serde_json::json!({
+                        "phase": "tls",
+                        "status": if !t.verdict.is_tls_fail() { "ok" } else { "blocked" },
+                        "detail": format!("{:?}", t.verdict),
+                        "latency_us": t.latency_us,
+                    })),
+                    "http": result.http.as_ref().map(|h| serde_json::json!({
+                        "phase": "http",
+                        "status": if !h.verdict.is_error() { "ok" } else { "blocked" },
+                        "detail": format!("{:?}", h.verdict),
+                        "latency_us": h.latency_us,
+                    })),
+                    "tcp16": result.tcp16.as_ref().map(|t| serde_json::json!({
+                        "phase": "tcp16",
+                        "status": if t.detected { "blocked" } else { "ok" },
+                        "detail": if t.detected { format!("detected at {}KB", t.detected_at_kb) } else { "ok".into() },
+                        "latency_us": t.rtt_us,
+                    })),
+                    "recommendations": recs_json,
+                    "should_tunnel": result.should_tunnel,
+                    "timestamp": result.timestamp,
+                })
+            })
+            .collect();
+
+        // Store batch in history
+        if let Ok(mut history) = self.probe_history.lock() {
+            for resp in &responses {
+                history.insert(0, resp.clone());
+            }
+            history.truncate(100);
+        }
+
+        Ok(serde_json::Value::Array(responses))
+    }
+    fn get_presets(&self) -> serde_json::Value {
+        use freedpi_core::probe::presets::all_presets;
+
+        let presets = all_presets();
+        let json: Vec<serde_json::Value> = presets
+            .iter()
+            .map(|p| {
+                serde_json::json!({
+                    "id": p.id,
+                    "name": p.name,
+                    "category": format!("{:?}", p.category).to_lowercase(),
+                    "domain_count": p.domains.len(),
+                })
+            })
+            .collect();
+        serde_json::Value::Array(json)
     }
 }
 

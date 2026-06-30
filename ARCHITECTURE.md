@@ -1,6 +1,6 @@
 # FreeDPI Windows — Архитектура (Rust, v1.0)
 
-**Всего техник: ~180**
+**Всего техник: ~185**
 - 45 — портировано из ByeDPI Android (TCP desync, TLS, QUIC, DNS, proxy fallback)
 - 15 — из zapret2 (multisplit, fakedsplit, syndata, badsum, synhide, ipfrag...)
 - 10 — Windows-эксклюзивных (IP frag overlap, MSS clamp, ACK suppress, reorder, RST selective...)
@@ -22,6 +22,7 @@
 - **3 — из OpenLogi (thread-local hot path, ~event tagging~ impostor flag, interprocess IPC)**
 - **2 — из rust-no-dpi-socks (byte-by-byte first packet, unidirectional frag)**
 - **2 — из rust-DPI-http-proxy (host-space, title-case HTTP headers)**
+- **1 — DPI Probe Module (превентивное определение типа DPI-блокировки: 5-phase pipeline + discriminator + accumulator + strategy map)**
 - (минус 6 Android-only: Doze, Radio, EnergyAware, Zero-Copy/splice...)
 
 ## Обзор
@@ -177,6 +178,20 @@ FreeDPI-win/
 │       │   ├── http.rs           # HTTP header tamper
 │       │   └── dns.rs            # DNS techniques
 │       ├── conntrack.rs          # Connection tracking (DashMap)
+│       ├── probe/                # DPI Probe Module (5-phase pipeline)
+│       │   ├── mod.rs            # ProbeModule orchestrator
+│       │   ├── config.rs         # ProbeConfig (21 field)
+│       │   ├── classifier.rs     # FailureCode enum (34 variants)
+│       │   ├── dns_probe.rs      # DNS Integrity (UDP vs DoH)
+│       │   ├── tcp_probe.rs      # TCP parallel dial racing
+│       │   ├── tls_probe.rs      # TLS staged handshake (1.3→1.2)
+│       │   ├── http_probe.rs     # HTTP application layer
+│       │   ├── tcp16_probe.rs    # Data-Volume (16×4KB)
+│       │   ├── discriminator.rs  # ServerActive vs PathActive
+│       │   ├── accumulator.rs    # 24h accumulation + eTLD+1
+│       │   ├── strategy_map.rs   # FailureCode → Strategy
+│       │   ├── presets.rs        # 8 preset lists (139+ domains)
+│       │   └── rkn_stub.rs       # ISP stub detection
 │       ├── proxy/                # SOCKS5 fallback
 │       │   ├── mod.rs
 │       │   ├── fallback.rs
@@ -1001,6 +1016,8 @@ impl DnsEngine {
 | TinyVec | `tinyvec` | 1 | Small vector optimization |
 | UUID | `uuid` | 1.0 | Config file UUID generation (`config.rs:81`); event_tag удалён (MR-18) |
 | ArcSwap | `arc-swap` | 1 | Lock-free atomic swap для WinDivert handle (MR-P2) |
+| TLS probing | `native-tls` | 0.2 | TLS version probing (1.3 → 1.2) для DPI Probe Module |
+| Concurrent maps | `dashmap` | 6.0 | Accumulator hot/family entries |
 
 ---
 
@@ -1018,7 +1035,8 @@ impl DnsEngine {
 | **P7** | Proxy Fallback + Free proxy pool + HPACK bomber + Fingerprint rotator | 8 | 2 нед |
 | **P8** | Rust-миграция bye-dpi (удаление FFI) + Adaptive DPI | 10 | 2 нед |
 | **P9** | System tray + Windows Service + installer + testing | — | 2 нед |
-| | **Итого 82 техники (ядро)** | **82** | **~22 нед** |
+| **P10** | **DPI Probe Module** (5-phase pipeline + discriminator + accumulator + strategy map + API + GUI) | 1 | 3 нед |
+| | **Итого 83 техники (ядро)** | **83** | **~25 нед** |
 
 ---
 
@@ -1358,8 +1376,9 @@ struct HopTab {
 | **rust-no-dpi-socks** | **2** | 1 | **Byte-by-byte** |
 | **rust-DPI-http-proxy** | **2** | 1 | **Host-space** |
 | **SpoofDPI** | **6** | 6 | **Segment Plans + Noise, Random Mask, Parallel Dial, Dual-Stack Hop, Domain Trie, Per-Rule Override** |
-| **Итого (до дедупликации)** | **~175** | **~159** | |
-| **После дедупликации** | **~156** | **~141** | |
+| **DPI Probe Module** | **1** | 1 | **5-phase pipeline + discriminator + accumulator + strategy map** |
+| **Итого (до дедупликации)** | **~176** | **~160** | |
+| **После дедупликации** | **~157** | **~142** | |
 
 ### 13.13 Топ-15 техник для первоочередной реализации
 
@@ -2110,7 +2129,7 @@ impl AppRouter {
 | RH1 | **Host-Space HTTP Header** | `desync::http::host_space` | Пробел после Host: | 🟡 P5 |
 | RH2 | **Title-Case HTTP Headers** | `desync::http::title_case` | Преобразование в Title-Case | 🟡 P5 |
 
-### 18.18 HTTP API для агента (8 эндпоинтов)
+### 18.18 HTTP API для агента (12 эндпоинтов)
 
 | # | Метод | Путь | Описание |
 |---|-------|------|----------|
@@ -2122,6 +2141,10 @@ impl AppRouter {
 | API6 | `GET` | `/api/v1/dns/cache` | DNS кэш |
 | API7 | `POST` | `/api/v1/routing/override` | Установить override маршрута для домена |
 | API8 | `GET` | `/api/v1/health` | Health check (для мониторинга) |
+| API9 | `POST` | `/api/v1/probe` | DPI probe для домена (DNS→TCP→TLS→HTTP→TCP16) |
+| API10 | `POST` | `/api/v1/probe/batch` | Batch probe для доменов из preset lists |
+| API11 | `GET` | `/api/v1/probe/presets` | Список 8 preset-ов (139+ доменов) |
+| API12 | `GET` | `/api/v1/probe/history` | История probe'ов (последние 100) |
 
 ### 18.19 Сводная таблица по всем источникам (18 проектов)
 
@@ -2141,9 +2164,10 @@ impl AppRouter {
 | Routing/Geo | — | — | — | 3 | — | — | 1 | — | — | 2 | — | — | — | — | — | — | — | — | **6** |
 | Infrastructure | 7 | — | — | — | — | — | 1 | 1 | 1 | — | — | — | 1 | — | — | 4 | 1 | 2 | **18** |
 | Crypto/Encryption | — | — | — | — | — | — | — | — | — | — | — | — | — | — | 2 | — | — | — | **2** |
-| **Итого** | **48** | **16** | **5** | **12** | **3** | **3** | **9** | **7** | **16** | **3** | **2** | **15** | **4** | **2** | **9** | **4** | **2** | **2** | **~162** |
+| DPI Probe | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | **1** |
+| **Итого** | **48** | **16** | **5** | **12** | **3** | **3** | **9** | **7** | **16** | **3** | **2** | **15** | **4** | **2** | **9** | **4** | **2** | **2** | **~163** |
 
-> После дедупликации: **~160 уникальных техник** (45 Android + 15 zapret2 + 10 Win-excl + 9 Nova + 3 Split + 10 PLAN2 + ~68 из 16 других проектов)
+> После дедупликации: **~161 уникальных техник** (45 Android + 15 zapret2 + 10 Win-excl + 9 Nova + 3 Split + 10 PLAN2 + ~69 из 17 других проектов + 1 DPI Probe)
 
 ### 18.20 Техники из Omoikane (6 шт)
 
@@ -2295,7 +2319,7 @@ example.com → **.com (false)
 | Monitoring | 1 (OM6) | 1 (OF9) | 1 (VA10) | — | **3** |
 | **Итого** | **6** | **9** | **10** | **6** | **~31** |
 
-> После дедупликации с существующими 150 техниками: **~170 уникальных техник** (+20 действительно новых)
+> После дедупликации с существующими 161 техниками: **~171 уникальных техник** (+10 действительно новых)
 
 ---
 
@@ -2319,8 +2343,9 @@ example.com → **.com (false)
 | **P8** | Rust-миграция bye-dpi (удаление FFI) + Adaptive DPI + **Post-Quantum** + **Lua strategies** | 14 | NP7, RP15 | 3 нед |
 | **P9** | **Supervisor/Worker** + **interprocess IPC** + **Task Scheduler** + **UWP** + **Firewall** + **PAC** + System tray + Windows Service + installer + **Job Object Cleanup** + **Graceful Shutdown** + **Event-Driven Net Monitor** + **Arg Sanitizer** + **Minisign Ed25519** | 15 | QL2, OL3, DR2-DR6, **VA4-VA8** | 3 нед |
 | **P10** | **Полноценный GUI** (Tauri v2 + React + i18n) | — | System tray, Dashboard, 5 panels | 2 нед |
+| **P10.1** | **DPI Probe Module** (5-phase pipeline: DNS/TCP/TLS/HTTP/TCP16 + discriminator + accumulator + strategy map + presets + API + GUI) | 1 | core/src/probe/*, API endpoints, ProbePanel.tsx, Dashboard widget | 3 нед |
 | **P11** | **SpoofDPI-derived фичи**: Custom Segment Plans + Noise, Xorshift Random Split Mask, Parallel Dial, Dual-Stack Hop Learning, Domain Trie, Per-Rule Config Override | 6 | SP1-SP6 | 1 нед |
-| | **Итого: ~180 техник** | **~206** | **+6 из SpoofDPI** | **~40 нед** |
+| | **Итого: ~186 техник** | **~212** | **+6 из SpoofDPI + 1 DPI Probe** | **~43 нед** |
 
 ---
 
@@ -3481,7 +3506,7 @@ impl Drop for NetworkMonitor {
 
 ---
 
-## 23. Архитектурные изменения (v3.1 — после Meta-Review)
+## 23. Архитектурные изменения (v3.2 — после DPI Probe Module)
 
 ### 23.1 Обзор изменений
 
@@ -3598,3 +3623,180 @@ WinDivert recv ──→ bytes::Bytes::copy_from_slice (1 копия)
 - **Load on start**: загрузка blocked доменов при старте
 
 **Портфолио:** `split_tunnel.rs`
+
+---
+
+## 25. DPI Probe Module — превентивное определение типа DPI-блокировки
+
+### 25.1 Назначение
+
+DPI Probe Module — автономный модуль (не зависит от WinDivert) для определения типа DPI-блокировки
+для конкретного домена/IP. На основе результатов probe'а рекомендует стратегию desync.
+
+**Источники:** Ladon, dpi-detector, dpi-checkers, ByeByeDPI.
+
+### 25.2 Архитектура
+
+```
+core/src/probe/
+├── mod.rs              # ProbeModule orchestrator (5 phases + accumulator)
+├── config.rs           # ProbeConfig (21 поле: DNS/TCP/TLS/HTTP/TCP16/Accumulation/RKN)
+├── classifier.rs       # FailureCode enum (6 DNS + 6 TCP + 15 TLS + 7 HTTP + ConnectionStage)
+├── dns_probe.rs        # Phase 1: DNS Integrity (UDP vs DoH cross-validation)
+├── tcp_probe.rs        # Phase 2: TCP Connectivity (parallel dial racing)
+├── tls_probe.rs        # Phase 3: TLS Staged Handshake (1.3 → 1.2, native-tls)
+├── http_probe.rs       # Phase 4: HTTP Application Layer (GET, cutoff, 451, stub)
+├── tcp16_probe.rs      # Phase 5: Data-Volume (raw TcpStream, 16×4KB HEAD requests)
+├── discriminator.rs    # Server-active vs Path-active classification
+├── accumulator.rs      # 24h temporal accumulation + eTLD+1 family expansion
+├── strategy_map.rs     # ProbeResult → StrategyRecommendation mapping
+├── presets.rs          # 8 preset domain lists (139+ domains from ByeByeDPI)
+└── rkn_stub.rs         # ISP stub page detection (10 known substrings)
+```
+
+### 25.3 Pipeline
+
+```
+ProbeModule::probe(domain)
+  │
+  ├─ Phase 1: DnsProbe ──────► DnsProbeResult { verdict, udp_ips, doh_ips, fake_ip_detected }
+  │   (UDP/53 vs DoH cross-validation, fake-IP detection 198.18.0.0/15, 100.64.0.0/10)
+  │
+  ├─ Phase 2: TcpProbe ──────► TcpProbeResult { verdict, rtt_us, ip }
+  │   (parallel dial racing по N IP)
+  │
+  ├─ Phase 3: TlsProbe ──────► TlsProbeResult { verdict, tls13_ok, tls12_ok, stage }
+  │   (staged: TLS 1.3 → TLS 1.2, Version12Only detection)
+  │
+  ├─ Phase 4: HttpProbe ─────► HttpProbeResult { verdict, bytes_read, redirect_url }
+  │   (GET /, 451, cutoff, foreign redirect, RKN stub)
+  │
+  ├─ Phase 5: Tcp16Probe ────► Tcp16ProbeResult { detected, detected_at_kb }
+  │   (raw TcpStream keep-alive, 16×4KB HEAD requests, dynamic timeout)
+  │
+  ├─ Discriminator ──────────► DiscriminationResult { origin, verdict, confidence }
+  │   (ServerActive vs PathActive vs Ambiguous)
+  │
+  ├─ Accumulator ────────────► should_tunnel: bool
+  │   (24h hot state, promotion to permanent cache, eTLD+1 family expansion)
+  │
+  └─ StrategyMap ────────────► Vec<StrategyRecommendation>
+      (failure code → desync strategy mapping)
+```
+
+### 25.4 FailureCode Classification
+
+**DNS (6 типов):**
+| Код | Описание | Детекция |
+|-----|----------|----------|
+| Poisoned | UDP возвращает другие IP чем DoH | IPs ∩ DoH = ∅ |
+| NxdomainSpoof | UDP NXDOMAIN, DoH резолвит | rcode=3 + DoH OK |
+| EmptySpoof | UDP пустой ответ, DoH резолвит | UDP empty + DoH OK |
+| Intercepted | UDP timeout, DoH работает | UDP timeout + DoH OK |
+| DohBlocked | Все DoH недоступны | DoH fails + UDP empty |
+| Unresolvable | Ни UDP, ни DoH не резолвит | Both empty |
+
+**TCP (6 типов):**
+| Код | Описание |
+|-----|----------|
+| ConnectOk | TCP handshake прошёл |
+| Reset | ConnectionResetError |
+| Timeout | socket.timeout |
+| Refused | ConnectionRefusedError |
+| Unreachable | ICMP unreachable |
+| DataVolumeCut | Связь обрывается на N КБ |
+
+**TLS (15 типов):**
+| Код | Описание | Discrimination |
+|-----|----------|:--------------:|
+| HandshakeOk | TLS handshake OK | HTTP phase |
+| Version13Ok | TLS 1.3 работает | HTTP phase |
+| Version12Only | TLS 1.3 fail, 1.2 ok (DPI атакует ClientHello!) | **Blocked** |
+| Reset | RST во время TLS handshake | **Blocked** |
+| Garbage | Wrong version / record overflow | **Blocked** |
+| Alert | Generic TLS alert | **Ambiguous** |
+| AlertSniblock | TLS alert: SNI block | **Clear** (ServerActive) |
+| AlertHandshake | TLS alert: handshake_failure | **Clear** (ServerActive) |
+| AlertProtocol | TLS alert: protocol_version | **Clear** (ServerActive) |
+| Mitm / MitmExpired / MitmSelfSigned / MitmHostnameMismatch | Сертификат подменён | **Clear** (ServerActive) |
+| Eof | Unexpected EOF | **Blocked** |
+| SilentDrop | TLS hang до timeout | **Blocked** |
+
+### 25.5 Strategy Mapping
+
+| Тип блокировки | Рекомендуемая стратегия | Confidence |
+|----------------|------------------------|:----------:|
+| DNS Poisoned/NxdomainSpoof/EmptySpoof | `doh_dns` (DoH resolver) | 0.95 |
+| DNS Intercepted | `doh_dns` | 0.90 |
+| TCP RST | `tcp_split` (split в 2 сегмента) | 0.85 |
+| TCP DataVolumeCut | `mss_clamp` (MSS + reorder) | 0.85 |
+| TLS Version12Only | `tls_record_frag` (TLS 1.2 + record frag) | 0.90 |
+| TLS Garbage injection | `seq_number_spoof` (SEQ spoof) | 0.85 |
+| TLS RST | `disorder` (reorder segments) | 0.80 |
+| TLS SNI block | `hostfake` (allowed SNI) | 0.85 |
+| TLS MITM | `socks5_fallback` (proxy required) | 0.90 |
+| HTTP Cutoff | `tcp_window_clamp` | 0.80 |
+| HTTP 451 / Foreign redirect / Stub | `socks5_fallback` | 0.85-0.95 |
+
+### 25.6 Accumulator (24h temporal + eTLD+1)
+
+```rust
+pub struct Accumulator {
+    hot_entries: DashMap<String, HotEntry>,       // domain → { blocked_count, total_probes, 24h TTL }
+    cache_entries: DashSet<String>,                // permanent blocked (80%+ blocked rate)
+    family_entries: DashMap<String, FamilyEntry>,  // eTLD+1 → subdomain list
+}
+
+// Promotion: 50+ probes в 24h окне + 80% blocked rate → permanent cache
+// Family expansion: 10+ поддоменов eTLD+1 заблокированы → весь family flagged
+```
+
+### 25.7 API Endpoints
+
+```
+POST /api/v1/probe
+  { "domain": "rutracker.org", "full": true }
+  → полный pipeline (DNS + TCP + TLS + HTTP + TCP16)
+
+POST /api/v1/probe/batch
+  { "preset_ids": ["telegram", "discord"], "full": true }
+  → batch probe для всех доменов из выбранных списков
+
+GET /api/v1/probe/presets
+  → список 8 preset-ов с количеством доменов
+
+GET /api/v1/probe/history
+  → последние 100 результатов probe'ов
+```
+
+### 25.8 Preset Domain Lists (139+ domains)
+
+| Список | Доменов | Источник |
+|--------|:-------:|----------|
+| YouTube | 13 | ByeByeDPI proxytest_youtube.sites |
+| Google Video CDN | 19 | ByeByeDPI proxytest_googlevideo.sites |
+| Telegram | 52 | ByeByeDPI proxytest_telegram.sites |
+| Discord | 21 | ByeByeDPI proxytest_discord.sites |
+| Social Media | 16 | ByeByeDPI proxytest_social.sites |
+| General | 6 | ByeByeDPI proxytest_general.sites |
+| Cloudflare | 4 | ByeByeDPI proxytest_cloudflare.sites |
+| Türkiye | 8 | ByeByeDPI proxytest_türkiye.sites |
+
+### 25.9 GUI Integration (Tauri + React)
+
+- **ProbePanel.tsx**: Domain input + "Быстрая"/"Полная" кнопки, pipeline visualization, verdict, recommendations, history
+- **ProbePanel.css**: Стили для pipeline, phase cards, verdict banners, preset chips
+- **Dashboard ProbeWidget**: Мини-виджет с последним результатом probe (auto-refresh 30s)
+- **System Tray**: "Проверить DPI" пункт → навигация на вкладку probe
+- **Custom Domain Lists**: CRUD для пользовательских списков доменов
+
+### 25.10 Тесты
+
+359 unit tests, включая:
+- DNS cross-validate (7 paths: ok, poisoned, nxdomain, intercepted, empty, doh_blocked, unresolvable)
+- Fake-IP detection (198.18.0.0/15, 100.64.0.0/10)
+- Discriminator rules (11 tests: MITM=Clear, SilentDrop=Blocked, Alert=Ambiguous, Version12Only=Blocked)
+- TCP16 config reading
+- Preset domain counts (telegram=52, discord=21, social=16)
+- Accumulator eTLD+1 expansion
+- Strategy map recommendations

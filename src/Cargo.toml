@@ -16,6 +16,7 @@ authors = ["FreeDPI Team"]
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.52", features = ["full"] }
+futures = "0.3"
 
 # Parallel CPU processing
 rayon = "1.10"
